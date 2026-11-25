@@ -67,7 +67,7 @@ instructions / skill       output schema   validator plan
 | Artifact IR | Canonical record of one deliverable and its evidence | **Implemented** for one artifact type (section 6) |
 | Acceptance semantics | Results to verdict | **Implemented** as a pure function with tests (section 7) |
 | Collector | Observes a run from outside the producer | **Implemented** only as the Python baseline script, which is conventional tooling and not the Tenric runtime |
-| Verifier | Runs validators, computes the verdict | Three of nine validators exist as bootstrap code. **Specified** otherwise. |
+| Verifier | Runs validators, computes the verdict | **Implemented** for the seven machine-checkable requirements of the first contract, with a command line (`src/cli.ts`). Re-execution and human review are **Specified**. |
 | Contract Compiler | Section 4 | **Hypothesis** |
 | Backend Adapter | Section 8 | **Hypothesis** |
 | Execution Runtime | Lifecycle, timeouts, event log | **Hypothesis** |

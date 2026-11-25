@@ -1,6 +1,6 @@
 # Phase 1 plan (proposed)
 
-Status: proposed. Nothing here is started. Each slice ends with `npm run verify` passing and a short report.
+Status: proposed. Slice 1A is implemented and tested, see `docs/reports/phase-1a-report.md`; it is not approved. Nothing else is started. Each slice ends with `npm run verify` passing and a short report.
 
 ## Goal
 
