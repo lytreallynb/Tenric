@@ -39,7 +39,7 @@ Kept in one place: `docs/prior-art.md` section 5, and RFC-0001 section 10.
 ## Not verified in Phase 0
 
 - Any behaviour of any model or agent backend. No backend was invoked.
-- Reproduction on a second machine, operating system or architecture.
+- Reproduction on a second machine, operating system or architecture. Since done once in CI: see `docs/reports/ci-first-run.md`. Still open from that run: why the PNG differs between Linux and macOS/Windows; CRLF line endings in outputs written on Windows; the Python patch version varies per machine.
 - The timeout and cancellation paths through the collector. (A run that exits non-zero is tested.)
 - Prior-art entries marked "summary" or "recalled" in `docs/prior-art.md`.
 - That anyone other than the author can follow the README from a clean clone.
