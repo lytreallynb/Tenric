@@ -4,7 +4,7 @@
 
 Tenric is a model-agnostic runtime for contract-driven intelligence: it aims to give stable, verifiable, reproducible and portable deliverables across changing models, agent harnesses and execution environments.
 
-**Status: Phase 0 bootstrap.** This repository contains specifications, one working baseline experiment and the checks that exercise them. There is no runtime yet, no agent integration, and nothing here has been evaluated against a real model. See [the Phase 0 report](docs/reports/phase-0-report.md) for exactly what was built, run and left hypothetical.
+**Status: Phase 0 bootstrap, plus Phase 1 slice 1A (a verifier for the first contract), which is tested and not yet approved.** This repository contains specifications, one working baseline experiment and the checks that exercise them. There is no runtime yet, no agent integration, and nothing here has been evaluated against a real model. See [the Phase 0 report](docs/reports/phase-0-report.md) and [the slice 1A report](docs/reports/phase-1a-report.md) for exactly what was built, run and left hypothetical.
 
 ## Quick start
 
@@ -16,9 +16,17 @@ uv sync --locked
 npm run verify
 ```
 
-`npm run verify` typechecks, runs the baseline experiment twice, and runs the tests against those two real runs. It is the only command whose output may be cited as evidence that the repository works.
+`npm run verify` typechecks, runs the baseline experiment twice plus a broken and a timed-out run, and runs the tests against those real runs. It is the only command whose output may be cited as evidence that the repository works.
 
 To run the experiment alone: `npm run baseline`, then read `runs/baseline/report.md`.
+
+To check a run against a contract:
+
+```sh
+node src/cli.ts verify runs/baseline --contract spec/contracts/research.experiment-report/0.1.0.contract.json
+```
+
+It prints each requirement's status and the verdict, and exits 0 only for `accepted`. The baseline is currently `inconclusive`: re-execution (R-008) has no validator yet. A run collected from a working tree with uncommitted changes is `rejected`.
 
 ## What is here
 
@@ -33,7 +41,7 @@ To run the experiment alone: `npm run baseline`, then read `runs/baseline/report
 | `docs/adr/` | Architecture decision records |
 | `spec/` | Contract schema, research Artifact IR schema, the first contract |
 | `experiments/baseline/` | CPU-only experiment and a conventional collector, in Python |
-| `src/`, `tests/` | Bootstrap validators, verdict semantics as executable specification, tests |
+| `src/`, `tests/` | Validators, the `verify` command line, verdict semantics as executable specification, tests |
 | `fixtures/` | Hand-written demonstration data, labelled as such |
 
 ## Ground rules

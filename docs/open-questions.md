@@ -16,6 +16,9 @@ Status: living document. Add to it instead of guessing.
 | Q8 | How should partial or failed work be delivered? | A failed run with an honest failure record is a valid deliverable under some contracts. The current contract makes success mandatory. |
 | Q9 | Is there measurable value over group C? | See the falsification condition in `docs/evaluation-plan.md`. |
 | Q10 | How are human review results recorded and bound to an artifact digest? | Needed before any contract with a mandatory `human` requirement can be accepted. |
+| Q11 | Should a contract be able to demand `data_class: "measured"`? | Invariant I-7. No requirement in contract 0.1.0 reads `data_class`, so a self-consistent fixture is not rejected for being a fixture. Needs a new check kind or a parameter on an existing one, which is a contract change. |
+| Q12 | How is a snapshot source located and re-hashed? | The IR records `snapshot_sha256` and nothing else. Until this is answered `source-pinned` reports `error` for snapshots, so only git sources can pass R-006. |
+| Q13 | Must the recorded revision equal the tree being verified, or only exist in the repository? | `source-pinned` currently requires a commit that exists. Requiring equality with `HEAD` is stricter and would make older runs unverifiable. |
 
 ## Technical risks
 
@@ -29,7 +32,7 @@ Status: living document. Add to it instead of guessing.
 | Very new dependency majors (TypeScript 7, Vitest 5, NumPy 2.5) | Ecosystem churn | Exact pins and lockfiles; versions were simply the latest at bootstrap, not a deliberate choice |
 | The `runs/` directory is not committed | Evidence quoted in reports cannot be re-read later, only regenerated | Acceptable while runs are reproducible; revisit with attestations |
 | Environment record is Python-specific | The IR does not fit non-Python experiments | Generalise only when a second ecosystem appears |
-| Output paths may be symlinks | A listed output could point outside the run directory | Verifier must resolve real paths; slice 1A |
+| Output paths may be symlinks | A listed output could point outside the run directory | Done in slice 1A: R-002 and R-003 resolve real paths and fail on escape |
 | Dataset identity assumes one file bundled in a package | Does not cover downloaded or multi-file datasets | Extend to a manifest of digests when needed |
 
 ## Things that could invalidate the architecture
@@ -40,6 +43,6 @@ Kept in one place: `docs/prior-art.md` section 5, and RFC-0001 section 10.
 
 - Any behaviour of any model or agent backend. No backend was invoked.
 - Reproduction on a second machine, operating system or architecture. Since done once in CI: see `docs/reports/ci-first-run.md`. Still open from that run: why the PNG differs between Linux and macOS/Windows; CRLF line endings in outputs written on Windows; the Python patch version varies per machine.
-- The timeout and cancellation paths through the collector. (A run that exits non-zero is tested.)
+- The cancellation path through the collector, which is not implemented: an interrupted run writes no artifact. (Non-zero exit and timeout are tested.)
 - Prior-art entries marked "summary" or "recalled" in `docs/prior-art.md`.
 - That anyone other than the author can follow the README from a clean clone.
