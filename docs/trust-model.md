@@ -51,8 +51,8 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | I-4 | The producer cannot change the contract, the schemas, the collector or the verifier that judge its own output. | **Not enforced** (section 2) |
 | I-5 | Records marked `collector` were produced by code that does not import or execute producer code. | Held by construction in `run_baseline.py` (standard library only, subprocess boundary); not checked mechanically |
 | I-6 | Every output listed in an artifact is identified by content digest, and verification re-hashes the bytes. | Implemented, tested with seven tampering cases |
-| I-7 | A fixture can never be reported as a measurement: `data_class` is mandatory and fixtures say `fixture`. | Schema-enforced; no validator yet rejects a `fixture` under a contract that demands `measured` |
-| I-8 | Failure is recorded, never dropped: a failed, timed-out or cancelled run still yields an artifact with `execution.status` and a `failure` record. | Implemented in the collector; a test covers a run that exits non-zero. Timeout and cancellation are untested |
+| I-7 | A fixture can never be reported as a measurement: `data_class` is mandatory and fixtures say `fixture`. | Schema-enforced; no validator yet rejects a `fixture` under a contract that demands `measured` (open question Q11) |
+| I-8 | Failure is recorded, never dropped: a failed, timed-out or cancelled run still yields an artifact with `execution.status` and a `failure` record. | Implemented in the collector for non-zero exit and timeout, both tested. Cancellation is not implemented: an interrupted run writes no artifact |
 | I-9 | A verdict does not assert semantic correctness. It asserts which requirements passed, by which means. | Convention; wording rule in AGENTS.md |
 
 ## 5. Failure modes
@@ -69,18 +69,18 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | Output modified after collection | R-002 fails | rejected | Yes (edited text, flipped byte) |
 | Reported metric differs from the hashed source | R-003 fails | rejected | Yes |
 | Metric cites a file that is not a hashed output | R-003 fails | rejected | Yes |
-| Mismatched source identifier (artifact revision differs from the tree verified) | R-006 fails | rejected | **No validator yet** |
-| Dirty working tree at run time | R-006 fails | rejected | Recorded by the collector, **not yet checked** |
-| Evidence asserted by the producer instead of the collector | R-004 fails | rejected | **No validator yet** |
-| Fabricated or unsupported finding | R-007 checks that citations resolve; R-009 (human) judges whether they justify the statement | rejected, or flagged | **No validator yet**; the semantic part is never machine-decidable |
-| Incomplete execution, timeout, cancellation | Collector records the status; R-005 fails | rejected | Recorded, and a failed run is tested end to end; **R-005 itself is not implemented**, so the verdict is inconclusive where it should be rejected. Timeout and cancellation are untested |
+| Mismatched source identifier (artifact revision is not a commit in the repository verified) | R-006 fails | rejected | Yes. Equality with the checked-out tree is not required (open question Q13) |
+| Dirty working tree at run time | R-006 fails | rejected | Yes |
+| Evidence asserted by the producer instead of the collector | R-004 fails | rejected | Yes, as far as the `provenance` field goes. A producer that writes `collector` itself is the gap in section 2 |
+| Fabricated or unsupported finding | R-007 checks that citations resolve; R-009 (human) judges whether they justify the statement | rejected, or flagged | Yes for citations that do not resolve; the semantic part is never machine-decidable |
+| Incomplete execution, timeout, cancellation | Collector records the status; R-005 fails | rejected | Yes for a failed and a timed-out run, end to end. A cancelled status is rejected by R-005, but the collector does not record cancellation |
 | Validator crashes or is unavailable | Requirement status `error` or `not_run` | inconclusive | Yes (verdict logic) |
 | Unauthorized file access by the producer | Sandbox denies; attempts appear in the event log | rejected | **Not addressed** |
 | Unauthorized contract modification | Contract digest pinned before the run and compared after; contract lives outside the producer's writable area | none issued, run void | **Not addressed** |
-| Symlinked output pointing outside the artifact directory | Verifier resolves real paths and refuses escapes | rejected | **Not addressed** (the schema blocks `..` and absolute paths only) |
+| Symlinked output pointing outside the artifact directory | Verifier resolves real paths and refuses escapes | rejected | Yes (R-002 and R-003) |
 | Hash collision or weak digest | SHA-256 only; algorithm recorded with each digest in a future IR version | n/a | By choice of algorithm |
 
-Because five mandatory requirements have no validator yet, the real baseline run currently gets the verdict **inconclusive**, and a test asserts exactly that. Nothing in this repository has been `accepted`.
+Because one mandatory requirement (R-008, re-execution) has no validator yet, the real baseline run currently gets the verdict **inconclusive**, and a test asserts exactly that. Nothing in this repository has been `accepted`.
 
 ## 6. Options for enforcing I-4 (decision needed, see the Phase 0 report)
 
