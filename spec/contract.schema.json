@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tenric:spec:contract:0.1.0",
+  "title": "Tenric Contract Specification (v0.1.0, proposed)",
+  "description": "A versioned delivery contract: which artifact type it governs, which requirements apply, how each is checked, and what happens when a check fails or cannot run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_schema", "id", "version", "title", "artifact", "requirements", "acceptance"],
+  "properties": {
+    "contract_schema": { "const": "0.1.0" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "ir_version", "schema"],
+      "properties": {
+        "type": { "type": "string" },
+        "ir_version": { "type": "string" },
+        "schema": { "type": "string", "description": "Repository-relative path of the artifact JSON Schema." },
+        "schema_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "applicability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "requires_capabilities": {
+          "description": "Capabilities the execution environment must provide for the contract to be enforceable at all (for example an independent collector).",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/requirement" }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule"],
+      "properties": {
+        "rule": { "const": "all-mandatory-pass", "description": "The only rule in v0.1.0; see docs/rfcs/RFC-0001 section 7." }
+      }
+    }
+  },
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "level", "verifiability", "check"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^R-\\d{3}$" },
+        "title": { "type": "string" },
+        "rationale": { "type": "string" },
+        "level": { "enum": ["mandatory", "advisory"] },
+        "verifiability": {
+          "description": "machine: decidable by a deterministic validator over the artifact. empirical: needs a re-execution or measurement. human: needs a reviewer's judgement.",
+          "enum": ["machine", "empirical", "human"]
+        },
+        "check": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "enum": [
+                "artifact-schema", "output-integrity", "metric-traceability",
+                "collector-provenance", "execution-succeeded", "source-pinned",
+                "finding-references", "numeric-reproduction", "human-review"
+              ]
+            },
+            "params": { "type": "object" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

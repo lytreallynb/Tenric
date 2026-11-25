@@ -1,0 +1,22 @@
+{
+  "name": "tenric",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Model-agnostic runtime for contract-driven intelligence (Phase 0 bootstrap).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "baseline": "uv run --locked python experiments/baseline/run_baseline.py --out runs/baseline",
+    "verify": "bash scripts/verify.sh"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.7",
+    "ajv": "8.20.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.2"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "contract_schema": "0.1.0",
+  "id": "research.experiment-report",
+  "version": "0.1.0",
+  "title": "Reproducible research experiment report",
+  "description": "Every experiment produces a consistently structured report whose records are backed by evidence collected outside the process that ran the experiment.",
+  "artifact": {
+    "type": "research.experiment-report",
+    "ir_version": "0.1.0",
+    "schema": "spec/research-report.artifact.schema.json"
+  },
+  "applicability": {
+    "description": "Single-process, CPU-only experiments whose outputs are files in one directory.",
+    "requires_capabilities": ["independent-collector", "content-hashing"]
+  },
+  "requirements": [
+    {
+      "id": "R-001", "title": "Artifact conforms to the IR schema",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "artifact-schema" }
+    },
+    {
+      "id": "R-002", "title": "Every listed output exists and matches its recorded size and SHA-256",
+      "rationale": "Detects missing or modified artifacts.",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "output-integrity" }
+    },
+    {
+      "id": "R-003", "title": "Every reported metric equals the value at its pointer in a hashed output",
+      "rationale": "A metric in the report must be traceable to a file whose integrity R-002 covers.",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "metric-traceability" }
+    },
+    {
+      "id": "R-004", "title": "Source, environment, dataset, config, execution and output digests were recorded by the collector",
+      "rationale": "Producer-asserted metadata is a claim, not evidence.",
+      "level": "mandatory", "verifiability": "machine",
+      "check": {
+        "kind": "collector-provenance",
+        "params": { "sections": ["source", "environment", "dataset", "config", "execution", "outputs"] }
+      }
+    },
+    {
+      "id": "R-005", "title": "Execution completed successfully",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "execution-succeeded" }
+    },
+    {
+      "id": "R-006", "title": "Source is pinned to a clean revision or a hashed snapshot",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "source-pinned" }
+    },
+    {
+      "id": "R-007", "title": "Every finding references metrics, figures or outputs that exist in the artifact",
+      "rationale": "Checks that support is cited, not that the citation justifies the statement (see R-009).",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "finding-references" }
+    },
+    {
+      "id": "R-008", "title": "A re-execution reproduces the metrics",
+      "level": "mandatory", "verifiability": "empirical",
+      "check": {
+        "kind": "numeric-reproduction",
+        "params": { "same_environment": "byte-identical", "cross_platform_abs_tolerance": 0.01 }
+      }
+    },
+    {
+      "id": "R-009", "title": "Findings and limitations are justified by the evidence",
+      "level": "advisory", "verifiability": "human",
+      "check": { "kind": "human-review" }
+    }
+  ],
+  "acceptance": { "rule": "all-mandatory-pass" }
+}

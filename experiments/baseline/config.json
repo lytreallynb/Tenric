@@ -1,0 +1,8 @@
+{
+  "experiment_id": "baseline-digits-logreg",
+  "title": "Logistic regression on the scikit-learn digits dataset",
+  "dataset": "sklearn-digits",
+  "seed": 20261125,
+  "test_fraction": 0.25,
+  "model": { "kind": "logistic_regression", "C": 1.0, "max_iter": 2000 }
+}
