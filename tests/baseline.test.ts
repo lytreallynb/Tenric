@@ -106,6 +106,25 @@ describe("baseline run: invalid artifacts are rejected", () => {
   });
 });
 
+describe("failed run: failure is explicit", () => {
+  const dir = process.env.TENRIC_RUN_FAIL ?? REPO_ROOT + "runs/verify-fail";
+
+  it("still yields a schema-valid artifact that records the failure and lists no outputs", () => {
+    const artifact = readJson(join(dir, "artifact.json")) as any;
+    expect(validateArtifact(artifact), JSON.stringify(validateArtifact.errors)).toBe(true);
+    expect(artifact.execution.status).toBe("failed");
+    expect(artifact.execution.exit_code).not.toBe(0);
+    expect(artifact.failure.reason).toBe("failed");
+    expect(artifact.failure.stderr_tail.length).toBeGreaterThan(0);
+    expect(artifact.outputs).toEqual([]);
+    expect(artifact.metrics).toEqual([]);
+  });
+
+  it("is not accepted", () => {
+    expect(decide(contract, runChecks(contract, dir)).verdict).not.toBe("accepted");
+  });
+});
+
 describe("baseline run: reproducibility across two executions in the same environment", () => {
   const a = readJson(join(RUN_A, "artifact.json")) as any;
   const b = readJson(join(RUN_B, "artifact.json")) as any;

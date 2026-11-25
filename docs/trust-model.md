@@ -52,7 +52,7 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | I-5 | Records marked `collector` were produced by code that does not import or execute producer code. | Held by construction in `run_baseline.py` (standard library only, subprocess boundary); not checked mechanically |
 | I-6 | Every output listed in an artifact is identified by content digest, and verification re-hashes the bytes. | Implemented, tested with seven tampering cases |
 | I-7 | A fixture can never be reported as a measurement: `data_class` is mandatory and fixtures say `fixture`. | Schema-enforced; no validator yet rejects a `fixture` under a contract that demands `measured` |
-| I-8 | Failure is recorded, never dropped: a failed, timed-out or cancelled run still yields an artifact with `execution.status` and a `failure` record. | Implemented in the collector; the failure path has not been exercised by a test |
+| I-8 | Failure is recorded, never dropped: a failed, timed-out or cancelled run still yields an artifact with `execution.status` and a `failure` record. | Implemented in the collector; a test covers a run that exits non-zero. Timeout and cancellation are untested |
 | I-9 | A verdict does not assert semantic correctness. It asserts which requirements passed, by which means. | Convention; wording rule in AGENTS.md |
 
 ## 5. Failure modes
@@ -73,7 +73,7 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | Dirty working tree at run time | R-006 fails | rejected | Recorded by the collector, **not yet checked** |
 | Evidence asserted by the producer instead of the collector | R-004 fails | rejected | **No validator yet** |
 | Fabricated or unsupported finding | R-007 checks that citations resolve; R-009 (human) judges whether they justify the statement | rejected, or flagged | **No validator yet**; the semantic part is never machine-decidable |
-| Incomplete execution, timeout, cancellation | Collector records the status; R-005 fails | rejected | Recorded; **R-005 not implemented; path untested** |
+| Incomplete execution, timeout, cancellation | Collector records the status; R-005 fails | rejected | Recorded, and a failed run is tested end to end; **R-005 itself is not implemented**, so the verdict is inconclusive where it should be rejected. Timeout and cancellation are untested |
 | Validator crashes or is unavailable | Requirement status `error` or `not_run` | inconclusive | Yes (verdict logic) |
 | Unauthorized file access by the producer | Sandbox denies; attempts appear in the event log | rejected | **Not addressed** |
 | Unauthorized contract modification | Contract digest pinned before the run and compared after; contract lives outside the producer's writable area | none issued, run void | **Not addressed** |

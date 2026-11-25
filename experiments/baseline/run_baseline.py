@@ -94,6 +94,12 @@ def collect_dataset() -> dict:
     }
 
 
+def display_path(path: Path) -> str:
+    """Repository-relative when possible, so artifacts do not embed machine-specific absolute paths."""
+    resolved = path.resolve()
+    return str(resolved.relative_to(REPO)) if resolved.is_relative_to(REPO) else resolved.name
+
+
 def describe_output(out: Path, rel: str, role: str, media_type: str, determinism: str) -> dict:
     path = out / rel
     return {
@@ -170,7 +176,7 @@ def main() -> int:
         "environment": collect_environment(),
         "dataset": collect_dataset(),
         "config": {
-            "path": str(args.config.resolve().relative_to(REPO)),
+            "path": display_path(args.config),
             "sha256": sha256_file(args.config),
             "values": config,
             "seed": config["seed"],

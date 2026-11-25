@@ -20,7 +20,7 @@ Implement the four missing machine validators and a CLI.
 Plus:
 
 - `tenric verify <run-dir> --contract <file>` printing per-requirement results and the verdict, exiting 0 only for `accepted`.
-- Tests for the failure paths not yet exercised: failed run, timeout, dirty tree, stale revision, fixture submitted as a measurement, symlinked output.
+- Tests for the failure paths not yet exercised: timeout, cancellation, dirty tree, stale revision, fixture submitted as a measurement, symlinked output.
 - Expected outcome: the baseline verdict moves from `inconclusive` (five blocking) to `inconclusive` (one blocking: R-008).
 
 Size: roughly 200 lines of TypeScript and tests. No new dependencies.
