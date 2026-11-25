@@ -147,6 +147,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=HERE / "config.json")
+    parser.add_argument("--timeout", type=float, default=TIMEOUT_SECONDS, help="seconds before the experiment is killed")
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -160,7 +161,7 @@ def main() -> int:
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     start = time.monotonic()
     try:
-        done = subprocess.run(command, env={**os.environ, **PINNED_ENV}, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
+        done = subprocess.run(command, env={**os.environ, **PINNED_ENV}, capture_output=True, text=True, timeout=args.timeout)
         status, exit_code, stderr = ("succeeded" if done.returncode == 0 else "failed"), done.returncode, done.stderr
     except subprocess.TimeoutExpired as error:
         status, exit_code, stderr = "timeout", None, str(error)
