@@ -2,13 +2,14 @@
 // revision, language and theme, and the current view.
 import * as React from "react";
 import {
-  BookOpenIcon, BoxesIcon, ChevronRightIcon, CpuIcon, FileTextIcon, GitCompareArrowsIcon, LanguagesIcon, LayoutDashboardIcon, ListChecksIcon, MenuIcon, MonitorIcon, MoonIcon, PlayIcon, ShieldCheckIcon, SunIcon,
+  BookOpenIcon, ChevronRightIcon, ChevronsUpDownIcon, CpuIcon, FileTextIcon, GitBranchIcon, GitCompareArrowsIcon, LanguagesIcon, LayoutDashboardIcon, ListChecksIcon, MonitorIcon, MoonIcon, PlusIcon, ShieldCheckIcon, SunIcon,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuBadge,
+  SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { getLang, t } from "@/lib/strings.js";
 
@@ -24,63 +25,112 @@ export function useCrumbs(trail: Crumb[]) {
 
 export const NAV: [string, [string, string, React.ElementType][]][] = [
   ["inspect", [["overview", "#/", LayoutDashboardIcon], ["runs", "#/runs", ListChecksIcon], ["compare", "#/compare", GitCompareArrowsIcon], ["contracts", "#/contracts", FileTextIcon]]],
-  ["act", [["new", "#/new", PlayIcon]]],
   ["ref", [["system", "#/system", CpuIcon], ["docs", "#/docs", BookOpenIcon]]],
 ];
 
-function Brand() {
-  return (
-    <a href="#/" className="flex items-center gap-2 px-2 py-1.5">
-      <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg"><ShieldCheckIcon className="size-4" /></div>
-      <div className="grid flex-1 text-left leading-tight">
-        <span className="truncate text-sm font-semibold">Tenric</span>
-        <span className="text-muted-foreground truncate text-xs">{t("brand_sub")}</span>
-      </div>
-    </a>
-  );
-}
-
-function NavList({ active, counts, onNavigate }: { active?: string; counts: Record<string, number | undefined>; onNavigate?: () => void }) {
-  return (
-    <nav className="flex flex-col gap-4">
-      {NAV.map(([group, items]) => (
-        <div key={group} className="flex flex-col gap-1">
-          <div className="text-sidebar-foreground/70 px-2 text-xs font-medium">{t(`nav_group_${group}`)}</div>
-          {items.map(([id, href, Icon]) => (
-            <a
-              key={id}
-              href={href}
-              onClick={onNavigate}
-              aria-current={id === active ? "page" : undefined}
-              className={cn(
-                "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex h-8 items-center gap-2 rounded-md px-2 text-sm transition-colors",
-                id === active && "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              <span className="flex-1 truncate">{t(`nav_${id}`)}</span>
-              {counts[id] !== undefined ? <span className="text-muted-foreground text-xs tabular-nums">{counts[id]}</span> : null}
-            </a>
-          ))}
-        </div>
-      ))}
-    </nav>
-  );
-}
-
-function SidebarBody({ active, counts, onNavigate }: { active?: string; counts: Record<string, number | undefined>; onNavigate?: () => void }) {
-  return (
-    <div className="flex h-full flex-col gap-4 p-2">
-      <Brand />
-      <div className="flex-1 overflow-y-auto"><NavList active={active} counts={counts} onNavigate={onNavigate} /></div>
-      <div className="text-muted-foreground flex items-start gap-2 rounded-md border bg-background/60 p-3 text-xs leading-relaxed">
-        <BoxesIcon className="mt-0.5 size-3.5 shrink-0" />{t("local_only")}
-      </div>
-    </div>
-  );
-}
-
 export type Theme = "system" | "light" | "dark";
+
+// The current page reads as a raised tab on the sidebar; other entries keep quieter icons.
+const NAV_ITEM = "text-sidebar-foreground/80 [&>svg]:text-muted-foreground data-[active=true]:text-sidebar-foreground data-[active=true]:[&>svg]:text-sidebar-foreground data-[active=true]:bg-background data-[active=true]:shadow-xs data-[active=true]:ring-1 data-[active=true]:ring-sidebar-border dark:data-[active=true]:bg-sidebar-accent";
+
+const HREF: Record<string, string> = { ...Object.fromEntries(NAV.flatMap(([, items]) => items).map(([id, href]) => [id, href])), new: "#/new" };
+
+function AppSidebar({ active, counts, repository, theme, setTheme, setLang }: {
+  active?: string; counts: Record<string, number | undefined>; repository?: any;
+  theme: Theme; setTheme: (t: Theme) => void; setLang: (l: string) => void;
+}) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  const close = () => { if (isMobile) setOpenMobile(false); };
+  const lang = getLang();
+  return (
+    <Sidebar variant="inset" collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild tooltip="Tenric">
+              <a href="#/" onClick={close}>
+                <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg"><ShieldCheckIcon className="size-4" /></div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">Tenric</span>
+                  <span className="text-muted-foreground truncate text-xs">{t("brand_sub")}</span>
+                </div>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip={t("nav_new")} isActive={active === "new"}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground min-w-8 duration-200 ease-linear">
+                  <a href="#/new" onClick={close}><PlusIcon /><span>{t("nav_new")}</span></a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        {NAV.map(([group, items]) => (
+          <SidebarGroup key={group}>
+            <SidebarGroupLabel>{t(`nav_group_${group}`)}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {items.map(([id, href, Icon]) => (
+                  <SidebarMenuItem key={id}>
+                    <SidebarMenuButton asChild isActive={id === active} tooltip={t(`nav_${id}`)} className={NAV_ITEM}>
+                      <a href={href} onClick={close} aria-current={id === active ? "page" : undefined}><Icon /><span>{t(`nav_${id}`)}</span></a>
+                    </SidebarMenuButton>
+                    {counts[id] !== undefined ? <SidebarMenuBadge>{counts[id]}</SidebarMenuBadge> : null}
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton size="lg" tooltip={t("local_only")} className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
+                  <div className="bg-sidebar-accent text-sidebar-accent-foreground relative flex aspect-square size-8 items-center justify-center rounded-lg">
+                    <GitBranchIcon className="size-4" />
+                    {repository?.revision ? <span className={cn("ring-sidebar absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2", repository.dirty ? "bg-warning" : "bg-success")} /> : null}
+                  </div>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-mono text-xs font-medium">{repository?.revision ? repository.revision.slice(0, 10) : "—"}{repository?.dirty ? " · dirty" : ""}</span>
+                    <span className="text-muted-foreground truncate text-xs">{lang === "zh" ? "中文" : "English"} · {t(theme === "dark" ? "theme_dark" : theme === "light" ? "theme_light" : "theme_auto")}</span>
+                  </div>
+                  <ChevronsUpDownIcon className="ml-auto size-4" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-(--radix-dropdown-menu-trigger-width) min-w-60 rounded-lg" side={isMobile ? "bottom" : "right"} align="end" sideOffset={4}>
+                <DropdownMenuLabel className="text-muted-foreground text-xs font-normal leading-relaxed">{t("local_only")}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="flex items-center gap-2 text-xs"><LanguagesIcon className="size-3.5" />{t("language")}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={lang} onValueChange={setLang}>
+                  <DropdownMenuRadioItem value="zh">中文</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="flex items-center gap-2 text-xs"><SunIcon className="size-3.5" />{t("theme")}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as Theme)}>
+                  <DropdownMenuRadioItem value="system"><MonitorIcon />{t("theme_auto")}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="light"><SunIcon />{t("theme_light")}</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="dark"><MoonIcon />{t("theme_dark")}</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
 
 export function Shell({ active, section, counts, repository, theme, setTheme, setLang, children }: {
   active?: string; section: string; counts: Record<string, number | undefined>; repository?: any;
@@ -90,28 +140,16 @@ export function Shell({ active, section, counts, repository, theme, setTheme, se
   const [set, setSet] = React.useState<{ path: string; trail: Crumb[] }>({ path: "", trail: [] });
   const setTrail = React.useCallback((trail: Crumb[]) => setSet({ path: pathNow(), trail }), []);
   const trail = set.path === pathNow() ? set.trail : [];
-  const [open, setOpen] = React.useState(false);
-  const lang = getLang();
-  const ThemeIcon = theme === "dark" ? MoonIcon : theme === "light" ? SunIcon : MonitorIcon;
-  const crumbs: Crumb[] = [trail.length > 0 ? [section, NAV.flatMap(([, items]) => items).find(([id]) => id === active)?.[1] ?? "#/"] : section, ...trail];
+  const crumbs: Crumb[] = [trail.length > 0 ? [section, (active && HREF[active]) || "#/"] : section, ...trail];
 
   return (
     <CrumbContext.Provider value={setTrail}>
-      <div className="bg-sidebar flex min-h-svh">
-        <aside className="bg-sidebar text-sidebar-foreground sticky top-0 hidden h-svh w-64 shrink-0 md:block">
-          <SidebarBody active={active} counts={counts} />
-        </aside>
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="left" className="bg-sidebar w-72 p-0">
-            <SheetTitle className="sr-only">Tenric</SheetTitle>
-            <SheetDescription className="sr-only">{t("nav_group_inspect")}</SheetDescription>
-            <SidebarBody active={active} counts={counts} onNavigate={() => setOpen(false)} />
-          </SheetContent>
-        </Sheet>
-        <div className="bg-background flex min-w-0 flex-1 flex-col md:m-2 md:ml-0 md:rounded-xl md:border md:shadow-sm">
+      <SidebarProvider>
+        <AppSidebar active={active} counts={counts} repository={repository} theme={theme} setTheme={setTheme} setLang={setLang} />
+        <SidebarInset>
           <header className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur md:rounded-t-xl">
-            <Button variant="ghost" size="icon-sm" className="-ml-1 md:hidden" onClick={() => setOpen(true)} aria-label="Menu"><MenuIcon /></Button>
-            <Separator orientation="vertical" className="mr-1 !h-4 md:hidden" />
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 !h-4" />
             <nav aria-label="breadcrumb" className="min-w-0 flex-1">
               <ol className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-sm">
                 {crumbs.map((c, i) => {
@@ -127,42 +165,10 @@ export function Shell({ active, section, counts, repository, theme, setTheme, se
                 })}
               </ol>
             </nav>
-            {repository?.revision ? (
-              <Badge variant="outline" className="hidden gap-1.5 font-mono font-normal lg:inline-flex" title={repository.revision}>
-                <span className={cn("size-1.5 rounded-full", repository.dirty ? "bg-warning" : "bg-success")} />
-                {repository.revision.slice(0, 10)}{repository.dirty ? " · dirty" : ""}
-              </Badge>
-            ) : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" aria-label={t("language")}><LanguagesIcon />{lang === "zh" ? "中文" : "EN"}</Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuRadioGroup value={lang} onValueChange={setLang}>
-                  <DropdownMenuRadioItem value="zh">中文</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label={t("theme")}><ThemeIcon /></Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">{t("theme")}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as Theme)}>
-                  <DropdownMenuRadioItem value="system"><MonitorIcon />{t("theme_auto")}</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="light"><SunIcon />{t("theme_light")}</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="dark"><MoonIcon />{t("theme_dark")}</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </header>
-          <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">{children}</main>
-        </div>
-      </div>
+          <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8">{children}</div>
+        </SidebarInset>
+      </SidebarProvider>
     </CrumbContext.Provider>
   );
 }
-
