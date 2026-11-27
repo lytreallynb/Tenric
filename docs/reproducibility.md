@@ -49,7 +49,7 @@ A finding from building this: the first figure rendered on the bootstrap machine
 
 Each output carries `determinism`:
 
-- `byte-identical`: equal digest expected for equal controlled inputs in the locked environment on the same platform. Across platforms this is not promised for the PNG: the three platforms render exactly the same pixels, and the Linux file is compressed differently from the macOS and Windows files (`docs/reports/phase-1b-report.md` section 5). The two JSON outputs were byte-identical on all three platforms once line endings were fixed.
+- `byte-identical`: equal digest expected for equal controlled inputs in the locked environment on the same platform. Across platforms this is not promised for the PNG: the three platforms render exactly the same pixels, and the Linux file is compressed differently from the macOS and Windows files (`docs/reports/phase-1b-report.md` section 5). The cause is the compression library: on Linux Pillow compresses with the operating system's zlib (`libz.so.1`, zlib 1.3 on Ubuntu 24.04), on macOS and Windows with the zlib-ng 2.3.3 its wheel bundles. This also means the PNG's bytes on Linux depend on a system package that `uv.lock` does not pin: two Linux machines with different zlib packages can produce different PNG bytes from the same pixels. R-008 would then report a byte difference in an environment it considers equal. Open question Q18. The two JSON outputs were byte-identical on all three platforms once line endings were fixed.
 - `numeric-tolerance`: values agree within the tolerance the contract states; bytes may differ.
 - `volatile`: contains declared run-specific values (the rendered report includes start time and runtime).
 
