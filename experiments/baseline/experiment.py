@@ -35,7 +35,8 @@ from sklearn.preprocessing import StandardScaler  # noqa: E402
 
 def write_json(path: Path, obj: object) -> None:
     # Sorted keys + fixed separators + trailing newline: stable bytes for equal values.
-    path.write_text(json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=True) + "\n")
+    # newline="\n" because text mode would otherwise write CRLF on Windows.
+    path.write_text(json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def render_confusion_matrix(spec: dict, path: Path) -> None:
@@ -67,7 +68,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    config = json.loads(args.config.read_text())
+    config = json.loads(args.config.read_text(encoding="utf-8"))
     seed = config["seed"]
     (args.out / "figures").mkdir(parents=True, exist_ok=True)
 

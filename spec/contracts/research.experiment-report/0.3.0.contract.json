@@ -1,0 +1,97 @@
+{
+  "contract_schema": "0.1.0",
+  "id": "research.experiment-report",
+  "version": "0.3.0",
+  "title": "Reproducible research experiment report",
+  "description": "Every experiment produces a consistently structured report whose records are backed by evidence collected outside the process that ran the experiment.",
+  "artifact": {
+    "type": "research.experiment-report",
+    "ir_version": "0.1.0",
+    "schema": "spec/research-report.artifact.schema.json",
+    "schema_sha256": "79dd6bae03c972f4528b46f16cf14ea15e32ce8c393427d70312de7d4f81e880"
+  },
+  "applicability": {
+    "description": "Single-process, CPU-only experiments whose outputs are files in one directory.",
+    "requires_capabilities": ["independent-collector", "content-hashing"]
+  },
+  "requirements": [
+    {
+      "id": "R-001", "title": "Artifact conforms to the IR schema",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "artifact-schema" }
+    },
+    {
+      "id": "R-002", "title": "Every listed output exists and matches its recorded size and SHA-256",
+      "rationale": "Detects missing or modified artifacts.",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "output-integrity" }
+    },
+    {
+      "id": "R-003", "title": "Every reported metric equals the value at its pointer in a hashed output",
+      "rationale": "A metric in the report must be traceable to a file whose integrity R-002 covers.",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "metric-traceability" }
+    },
+    {
+      "id": "R-004", "title": "Source, environment, dataset, config, execution and output digests are marked as recorded by the collector",
+      "rationale": "Producer-asserted metadata is a claim, not evidence. The mark is a field in the artifact; it is only as trustworthy as the place the artifact was written (docs/trust-model.md).",
+      "level": "mandatory", "verifiability": "machine",
+      "check": {
+        "kind": "collector-provenance",
+        "params": { "sections": ["source", "environment", "dataset", "config", "execution", "outputs"] }
+      }
+    },
+    {
+      "id": "R-005", "title": "Execution completed successfully",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "execution-succeeded" }
+    },
+    {
+      "id": "R-006", "title": "Source is pinned to a clean revision or a hashed snapshot",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "source-pinned" }
+    },
+    {
+      "id": "R-007", "title": "Every finding references metrics, figures or outputs that exist in the artifact",
+      "rationale": "Checks that support is cited, not that the citation justifies the statement (see R-009).",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "finding-references" }
+    },
+    {
+      "id": "R-008", "title": "A re-execution reproduces the metrics",
+      "rationale": "Metrics are compared exactly in an equal environment. Wall-clock durations never repeat, so a metric whose name ends in _seconds may differ by up to half of the larger value. The tolerance is a placeholder with one benchmark behind it (open question Q5).",
+      "level": "mandatory", "verifiability": "empirical",
+      "check": {
+        "kind": "numeric-reproduction",
+        "params": {
+          "same_environment": "byte-identical",
+          "cross_platform_abs_tolerance": 0.01,
+          "metric_rules": [
+            { "pattern": "*_seconds", "rel_tolerance": 0.5 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "R-009", "title": "Findings and limitations are justified by the evidence",
+      "level": "advisory", "verifiability": "human",
+      "check": { "kind": "human-review" }
+    },
+    {
+      "id": "R-010", "title": "The artifact is a measurement and contains metrics, a report and at least one finding",
+      "rationale": "R-002, R-003 and R-007 check every listed item, so an artifact that lists nothing passes them. A fixture must never be accepted as a result.",
+      "level": "mandatory", "verifiability": "machine",
+      "check": {
+        "kind": "required-content",
+        "params": { "data_class": "measured", "output_roles": ["metrics", "report"], "min_metrics": 1, "min_findings": 1 }
+      }
+    },
+    {
+      "id": "R-011", "title": "Names are unique and every figure points at listed outputs",
+      "rationale": "A duplicated metric name makes a citation ambiguous; a figure whose files are not hashed outputs is not covered by R-002.",
+      "level": "mandatory", "verifiability": "machine",
+      "check": { "kind": "internal-consistency" }
+    }
+  ],
+  "acceptance": { "rule": "all-mandatory-pass" }
+}

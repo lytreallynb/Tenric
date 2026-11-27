@@ -1,0 +1,5 @@
+# Checked-out text is LF on every platform, so files hashed or rendered into
+# outputs (the report template, configs) have the same bytes on Windows.
+* text=auto eol=lf
+*.png binary
+*.bundle binary

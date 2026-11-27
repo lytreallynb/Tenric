@@ -67,7 +67,7 @@ instructions / skill       output schema   validator plan
 | Artifact IR | Canonical record of one deliverable and its evidence | **Implemented** for one artifact type (section 6) |
 | Acceptance semantics | Results to verdict | **Implemented** as a pure function with tests (section 7) |
 | Collector | Observes a run from outside the producer | **Implemented** only as the Python baseline script, which is conventional tooling and not the Tenric runtime |
-| Verifier | Runs validators, computes the verdict | Three of nine validators exist as bootstrap code. **Specified** otherwise. |
+| Verifier | Runs validators, computes the verdict | **Implemented** for the seven machine-checkable requirements of the first contract, with a command line (`src/cli.ts`). Re-execution and human review are **Specified**. |
 | Contract Compiler | Section 4 | **Hypothesis** |
 | Backend Adapter | Section 8 | **Hypothesis** |
 | Execution Runtime | Lifecycle, timeouts, event log | **Hypothesis** |
@@ -165,18 +165,18 @@ Let *B* be the mandatory requirements whose status is not `pass`.
 
 Rules:
 
-1. **Only `accepted` permits acceptance.** `inconclusive` is a non-acceptance. Tooling must exit non-zero for anything other than `accepted`.
+1. **Only `accepted` permits acceptance.** `inconclusive` is a non-acceptance. Tooling must exit non-zero for anything other than `accepted`. (`tenric verify` exits 0 accepted, 1 rejected, 3 inconclusive, 2 no verdict.)
 2. **`rejected` dominates.** One definite failure is enough regardless of unknowns.
 3. **Advisory requirements never change the verdict** and are always reported.
 4. **No overrides inside the verdict.** A waiver is a new contract version or a recorded human decision outside the verdict, never a flag that turns `fail` into `pass`.
-5. **A verdict is bound** to one contract id and version, one artifact digest, and the verifier's source revision. (Binding is specified; the verdict record format is Phase 1.)
-6. **Precondition failures produce no verdict.** An unsupported contract version, an invalid contract, or an unmet capability means verification could not start. This is distinct from all three verdicts and is the caller's failure, not the producer's.
+5. **A verdict is bound** to one contract id and version, one artifact digest, and the verifier's source revision. (Implemented: `src/verify.ts` returns a verdict record with the contract SHA-256, artifact SHA-256 and verifier revision; ADR-0007.)
+6. **Precondition failures produce no verdict.** An unsupported contract version, an invalid contract, a contract whose content is not the registered one, or an unmet capability means verification could not start. (Capabilities are not checked yet: the verifier issues a verdict and states in the record that none is established. Open question Q14.) This is distinct from all three verdicts and is the caller's failure, not the producer's.
 7. **Dependent validators do not guess.** If the artifact is not structurally valid, validators that read its structure report `error`.
-8. **A verdict is not a truth claim.** The wording to use is "accepted under contract X version Y: N of N mandatory requirements passed (k machine, m empirical, h human)". Never "verified correct".
+8. **A verdict is not a truth claim.** The wording to use is "accepted under contract X version Y: N of N mandatory requirements passed (k machine, m empirical, h human)", followed by "; signed with the key of trusted collector C" or "; collector not attested" (ADR-0011). Never "verified correct".
 
 ### 7.3 Why three verdicts and not two
 
-Collapsing `inconclusive` into `rejected` would be simpler and equally fail-closed. They are kept apart because they call for different actions: `rejected` means fix the deliverable, `inconclusive` means finish the verification. The real baseline run is the example: nothing is wrong with it as far as the three implemented validators can tell, five mandatory requirements have no validator, and its verdict is `inconclusive`. Reporting that as `rejected` would be as misleading as reporting it `accepted`.
+Collapsing `inconclusive` into `rejected` would be simpler and equally fail-closed. They are kept apart because they call for different actions: `rejected` means fix the deliverable, `inconclusive` means finish the verification. The real baseline run is the example: verified without a re-execution, nothing is known to be wrong with it, one mandatory requirement (R-008) was not run, and its verdict is `inconclusive`. Reporting that as `rejected` would be as misleading as reporting it `accepted`.
 
 ## 8. Backend adapter (Hypothesis)
 

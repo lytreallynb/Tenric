@@ -1,0 +1,29 @@
+{
+  "contracts": [
+    {
+      "id": "research.experiment-report",
+      "path": "spec/contracts/research.experiment-report/0.1.0.contract.json",
+      "sha256": "55473beee661ad0e793f18872d52a633b67654fa02e21795a4d29a963b20a203",
+      "version": "0.1.0"
+    },
+    {
+      "id": "research.experiment-report",
+      "path": "spec/contracts/research.experiment-report/0.2.0.contract.json",
+      "sha256": "6f1d9eafe02d17746ed3e106722fe2ae0a7c1a010f074f688eb5ee3003651e11",
+      "version": "0.2.0"
+    },
+    {
+      "id": "research.experiment-report",
+      "path": "spec/contracts/research.experiment-report/0.3.0.contract.json",
+      "sha256": "891d92d3d68cc0739bf67624a872d031f7c92b727c003fc96c2c4161882b058f",
+      "version": "0.3.0"
+    },
+    {
+      "id": "research.experiment-report",
+      "path": "spec/contracts/research.experiment-report/0.4.0.contract.json",
+      "sha256": "e53d501781a6898f8793095ea4b2ddb45654b54ffb4be89a16272546da6b780f",
+      "version": "0.4.0"
+    }
+  ],
+  "registry_schema": "0.1.0"
+}

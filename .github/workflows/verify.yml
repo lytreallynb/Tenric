@@ -1,0 +1,152 @@
+# Runs the repository's single verification command on machines other than the
+# one that produced Phase 0, then compares the outputs across platforms.
+# See docs/adr/0006-ci-independent-verification.md.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      # Every platform reports its own result. One failing must not hide the others.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.5
+      - name: Install uv
+        run: pipx install uv==0.11.32
+      - name: Install locked dependencies
+        run: npm ci && uv sync --locked
+      - name: npm run verify
+        run: npm run verify
+      - name: Report the image libraries that encoded the figure
+        if: ${{ !cancelled() }}
+        # Diagnostic for docs/open-questions.md Q18: which zlib Pillow compresses PNGs with on this platform.
+        run: |
+          {
+            echo '### Image libraries on `${{ matrix.os }}`'
+            echo '```'
+            uv run --locked python -c "import sys, zlib, PIL, matplotlib; from PIL import features; print('python', sys.version.split()[0]); print('matplotlib', matplotlib.__version__); print('pillow', PIL.__version__); print('pillow zlib', features.version('zlib')); print('pillow zlib_ng', features.check_feature('zlib_ng')); print('python zlib', zlib.ZLIB_RUNTIME_VERSION)"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Record digests of the outputs declared byte-identical
+        if: ${{ !cancelled() }}
+        run: |
+          cd runs/verify-a
+          {
+            echo '### `${{ matrix.os }}` (`'"$(uname -sm)"'`)'
+            echo '```'
+            sha256sum metrics.json figures/confusion_matrix.spec.json figures/confusion_matrix.png
+            echo '```'
+            echo
+            echo 'Verdict record written by `npm run verify` (re-execution included):'
+            echo '```'
+            cat ../verdict.json 2>/dev/null || echo "not_run: no verdict record was written"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload the run directory
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: run-${{ matrix.os }}
+          path: |
+            runs/verify-a/
+            runs/verdict.json
+          if-no-files-found: error
+          retention-days: 14
+
+  compare:
+    # Informational. Byte identity is only claimed on one platform
+    # (docs/reproducibility.md section 3), so a difference here is reported and
+    # does not fail the job. Being unable to compare does fail it.
+    name: compare outputs across platforms
+    needs: verify
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: runs
+      - name: Compare
+        run: |
+          set -euo pipefail
+          platforms="ubuntu-24.04 macos-15 windows-2025"
+          files="metrics.json figures/confusion_matrix.spec.json figures/confusion_matrix.png"
+          missing=0
+          differing=0
+          {
+            echo "## Outputs across platforms"
+            echo
+            echo "| File | Platform | SHA-256 |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for f in $files; do
+            seen=""
+            for p in $platforms; do
+              path="runs/run-$p/verify-a/$f"
+              if [ -f "$path" ]; then
+                d=$(sha256sum "$path" | cut -d' ' -f1)
+              else
+                d="not_run"
+                missing=1
+                echo "::error::$f is missing for $p; that platform cannot be compared"
+              fi
+              echo "$f  $p  $d"
+              echo "| \`$f\` | $p | \`$d\` |" >> "$GITHUB_STEP_SUMMARY"
+              seen="$seen$d"$'\n'
+            done
+            if [ "$(printf '%s' "$seen" | sort -u | wc -l)" -ne 1 ]; then
+              differing=1
+              echo "::warning::$f is not byte-identical across platforms"
+            fi
+          done
+          for p in $platforms; do
+            echo "== metrics.json on $p"
+            cat "runs/run-$p/verify-a/metrics.json" 2>/dev/null || echo "not_run"
+          done
+          {
+            echo
+            if [ "$missing" -eq 1 ]; then
+              echo "Result: **error**. At least one platform produced no outputs to compare."
+            elif [ "$differing" -eq 1 ]; then
+              echo "Result: outputs **differ** between platforms. See the table and the job log."
+            else
+              echo "Result: the three outputs are byte-identical on all three platforms in this run."
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$missing"
+      - name: Say how the figures differ (container, compression or pixels)
+        if: ${{ !cancelled() }}
+        run: |
+          # Diagnostic only: it reports and never fails the job. scripts/png_diff.py exits 2 when it cannot compare.
+          png="verify-a/figures/confusion_matrix.png"
+          {
+            echo "## Figure comparison"
+            for pair in "ubuntu-24.04 macos-15" "ubuntu-24.04 windows-2025" "macos-15 windows-2025"; do
+              set -- $pair
+              echo
+              echo "### $1 against $2"
+              echo '```'
+              python3 scripts/png_diff.py "runs/run-$1/$png" "runs/run-$2/$png" || echo "(exit $?)"
+              echo '```'
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
