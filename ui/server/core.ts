@@ -34,8 +34,8 @@ export function repoRevision(): Revision {
  * (unregistered, altered or invalid contract); the caller reports that as
  * "no verdict issued", never as a verdict.
  */
-export function verify(dir: string, contractPath: string, repo: string = REPO_ROOT): VerdictRecord {
-  return issueVerdict({ runDir: dir, contractPath, repo });
+export function verify(dir: string, contractPath: string, repo: string = REPO_ROOT, collectorsPath?: string): VerdictRecord {
+  return issueVerdict({ runDir: dir, contractPath, repo, ...(collectorsPath ? { collectorsPath } : {}) });
 }
 
 /**
@@ -44,8 +44,8 @@ export function verify(dir: string, contractPath: string, repo: string = REPO_RO
  * synchronously, so it runs in the verifier's own command line as a separate
  * process and the record is read from its output.
  */
-export async function verifyWithReExecution(dir: string, contractPath: string, taskPath: string, repo: string = "."): Promise<VerdictRecord> {
-  const args = ["src/cli.ts", "verify", dir, "--contract", contractPath, "--repo", repo, "--reproduce", "--task", taskPath, "--json"];
+export async function verifyWithReExecution(dir: string, contractPath: string, taskPath: string, repo: string = ".", collectorsPath?: string): Promise<VerdictRecord> {
+  const args = ["src/cli.ts", "verify", dir, "--contract", contractPath, "--repo", repo, "--reproduce", "--task", taskPath, "--json", ...(collectorsPath ? ["--collectors", collectorsPath] : [])];
   let stdout: string;
   try {
     ({ stdout } = await promisify(execFile)(process.execPath, args, { cwd: REPO_ROOT, timeout: 30 * 60_000, maxBuffer: 16 * 1024 * 1024 }));

@@ -367,16 +367,23 @@ describe("runs made by the runtime", () => {
     // The trust boundary is read from the run's records as they stand: nothing the runtime did not write is filled in.
     expect(run.trust.made_by).toBe("runtime");
     expect(run.trust.backend_sandbox).toEqual(run.runtime.plan.backend.capabilities.sandbox);
-    expect(run.trust.isolation).toBe(recorded.isolation ?? null);
-    expect(run.trust.attestation).toBe(recorded.attestation ?? null);
+    expect(run.trust.isolation).toEqual(recorded.isolation ?? null);
+    expect(run.trust.attestation).toEqual(recorded.attestation ?? null);
+    expect(run.trust.attestation_refused).toEqual(recorded.attestation_refused ?? null);
     expect(run.trust.integrity.violations).toEqual(job.events.find((e: any) => e.type === "integrity.checked").violations);
     expect(run.trust.review_checklist).toEqual(run.runtime.plan.review_checklist);
 
-    // Verified again now, with the run's own re-execution task: the verifier must reach what the runtime recorded.
-    const again = (await post("/api/runs/ui-test-runtime/verify", { reproduce_task: run.reproduction_tasks[0].path })).json;
+    // Verified again now, with the run's own re-execution task and the collectors file the runtime's verdict trusted:
+    // the verifier must reach what the runtime recorded.
+    const collectors = run.recorded_collectors === null ? {} : { collectors: "recorded" };
+    const again = (await post("/api/runs/ui-test-runtime/verify", { reproduce_task: run.reproduction_tasks[0].path, ...collectors })).json;
     expect(again.issued).toBe(true);
     expect(again.record.statement).toBe(recorded.verification.wording);
     expect(again.exit_code).toBe(job.exit_code);
+    // Under the repository's own collectors file, which trusts no key, the same run is not attested.
+    const repository = (await post("/api/runs/ui-test-runtime/verify", { reproduce_task: run.reproduction_tasks[0].path, collectors: "repository" })).json;
+    expect(repository.record.collector.attested).toBe(false);
+    expect((await post("/api/runs/ui-test-runtime/verify", { collectors: "/etc/passwd" })).status).toBe(400);
     // Without re-execution the same run must not be reported as accepted when the contract requires reproduction.
     const live = (await call("/api/runs/ui-test-runtime/verify")).json.record;
     expect(live.results.find((r: any) => r.kind === "numeric-reproduction").status).toBe("not_run");

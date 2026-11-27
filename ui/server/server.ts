@@ -10,7 +10,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  BadRequest, compareRuns, contractDiff, getContract, getDoc, getRun, listContracts, listDocs, listRuns, NotFound, runFile, verifyRun,
+  BadRequest, type CollectorsChoice, compareRuns, contractDiff, getContract, getDoc, getRun, listContracts, listDocs, listRuns, NotFound, runFile, verifyRun,
 } from "./data.ts";
 import { cancelJob, defaultConfig, followJob, listJobs, startRun } from "./jobs.ts";
 import { compilePreview, systemStatus } from "./system.ts";
@@ -103,7 +103,9 @@ async function route(req: IncomingMessage, res: ServerResponse, publicDir: strin
     if (resource === "runs" && !a) return sendJson(res, 200, listRuns());
     if (resource === "runs" && a && !b) return sendJson(res, 200, getRun(a));
     if (resource === "runs" && a && b === "verify" && rest.length === 0) {
-      return sendJson(res, 200, await verifyRun(a, { contractId: query.get("contract") ?? undefined, contractVersion: query.get("version") ?? undefined }));
+      return sendJson(res, 200, await verifyRun(a, {
+        contractId: query.get("contract") ?? undefined, contractVersion: query.get("version") ?? undefined, collectors: (query.get("collectors") ?? undefined) as CollectorsChoice | undefined,
+      }));
     }
     if (resource === "runs" && a && b === "files" && rest.length > 0) {
       const file = runFile(a, rest.join("/"));
@@ -131,7 +133,7 @@ async function route(req: IncomingMessage, res: ServerResponse, publicDir: strin
       const body = (await readBody(req)) as Record<string, unknown>;
       const text = (value: unknown) => (typeof value === "string" ? value : undefined);
       return sendJson(res, 200, await verifyRun(a, {
-        contractId: text(body.contract), contractVersion: text(body.version), reproduceTask: text(body.reproduce_task),
+        contractId: text(body.contract), contractVersion: text(body.version), reproduceTask: text(body.reproduce_task), collectors: text(body.collectors) as CollectorsChoice | undefined,
       }));
     }
   }

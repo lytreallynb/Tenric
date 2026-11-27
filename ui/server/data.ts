@@ -2,7 +2,7 @@
 // fixtures in fixtures/, documents in docs/. No state is kept (ADR-0004):
 // every answer is recomputed from the files as they are now.
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import {
   exitCode, hasValidator, loadContract, PreconditionError, readJson, registration, REPO_ROOT, sha256File, verify, verifyWithReExecution,
   type VerdictRecord,
@@ -232,8 +232,8 @@ function sourceRepo(run: Located): string {
   return runtimeSummary(run) && existsSync(workspace) ? workspace : REPO_ROOT;
 }
 
-function verifyLocated(run: Located, contractPath: string): VerdictRecord {
-  return verify(run.dir, join(REPO_ROOT, contractPath), sourceRepo(run));
+function verifyLocated(run: Located, contractPath: string, collectorsPath?: string): VerdictRecord {
+  return verify(run.dir, join(REPO_ROOT, contractPath), sourceRepo(run), collectorsPath);
 }
 
 /** The contract to verify under when none is named: the one the runtime compiled the run against, else the newest applicable. */
@@ -434,6 +434,7 @@ export function getRun(id: string) {
     contracts: applicableContracts(artifact).map((c) => ({ id: c.id, version: c.version, path: c.path })),
     default_contract: (() => { const c = defaultContract(run, artifact); return c ? { id: c.id, version: c.version } : null; })(),
     reproduction_tasks: reproductionTasksFor(run, artifact),
+    recorded_collectors: (() => { const file = recordedCollectors(run); return file === null ? null : (file.startsWith(REPO_ROOT) ? rel(file) : file); })(),
     events,
     trust: trustBoundary(run, runJson, plan, events),
     runtime: {
@@ -463,7 +464,30 @@ export type VerifyOutcome =
   | { issued: true; record: VerdictRecord; exit_code: number; requirements: Json[] }
   | { issued: false; no_verdict: string };
 
-export interface VerifyOptions { contractId?: string; contractVersion?: string; reproduceTask?: string }
+/**
+ * Which collectors file the verifier trusts. "repository" is the command line's
+ * default, spec/collectors/registry.json. "recorded" is the file named in the
+ * verdict the runtime stored for this run (tenric/verification.json): the
+ * operator's own file, which trusts the runtime's signing key. No other path
+ * is accepted from a request.
+ */
+export type CollectorsChoice = "repository" | "recorded";
+export interface VerifyOptions { contractId?: string; contractVersion?: string; reproduceTask?: string; collectors?: CollectorsChoice }
+
+/** The collectors file the runtime's stored verdict used, when it names one that still exists. */
+export function recordedCollectors(run: Located): string | null {
+  const path = join(run.dir, "tenric", "verification.json");
+  if (!existsSync(path)) return null;
+  try {
+    const recorded = readJson(path) as Json;
+    const file = (recorded.collectors as Json | undefined)?.path;
+    if (typeof file !== "string" || file === "") return null;
+    const full = isAbsolute(file) ? file : join(REPO_ROOT, file);
+    return existsSync(full) ? full : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function verifyRun(id: string, options: VerifyOptions = {}): Promise<VerifyOutcome> {
   const run = locate(id);
@@ -478,14 +502,21 @@ export async function verifyRun(id: string, options: VerifyOptions = {}): Promis
     if (!fallback) return { issued: false, no_verdict: "no usable, registered contract governs this artifact type and IR version" };
     path = fallback.path;
   }
+  let collectorsPath: string | undefined;
+  if (options.collectors === "recorded") {
+    collectorsPath = recordedCollectors(run) ?? undefined;
+    if (!collectorsPath) throw new BadRequest("this run has no stored verdict that names a collectors file that exists");
+  } else if (options.collectors !== undefined && options.collectors !== "repository") {
+    throw new BadRequest('collectors must be "repository" or "recorded"');
+  }
   if (options.reproduceTask !== undefined && !reproductionTasksFor(run, readArtifact(run.artifactPath).artifact).some((task) => task.path === options.reproduceTask)) {
     throw new BadRequest("reproduce_task must be a task file this run can be re-executed with");
   }
   try {
     // Repository-relative paths, so the record reads the same as one made by the command line from the repository root.
     const record = options.reproduceTask === undefined
-      ? verifyLocated(run, path)
-      : await verifyWithReExecution(rel(run.dir), path, options.reproduceTask, rel(sourceRepo(run)) || ".");
+      ? verifyLocated(run, path, collectorsPath)
+      : await verifyWithReExecution(rel(run.dir), path, options.reproduceTask, rel(sourceRepo(run)) || ".", collectorsPath);
     const raw = readJson(join(REPO_ROOT, path)) as Json;
     return {
       issued: true,

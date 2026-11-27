@@ -149,6 +149,12 @@ function IsolationPart({ label, part }: { label: string; part: any }) {
   );
 }
 
+/** Every part the runtime recorded was enforced. A part recorded as null (no agent ran, for a script backend) does not count against it. */
+export function isolationEnforced(isolation: any) {
+  const parts = [isolation?.backend, isolation?.execution].filter((p) => p && typeof p === "object");
+  return parts.length > 0 && parts.every((p) => p.enforced === true);
+}
+
 /**
  * The boundary between the producer and the evidence, as the run's records
  * state it. Nothing here is inferred; a missing record says so.
@@ -166,7 +172,9 @@ export function TrustBoundary({ run, record }: { run: any; record?: any }) {
         {col ? (
           <BoundaryRow icon={ShieldCheckIcon} title={t("tb_verifier_attestation")} tone={col.attested ? "ok" : "neutral"} state={<Status word={col.attested ? "attested" : "not attested"} />}>
             <p>{col.attested ? t("tb_attested_body") : t("tb_not_attested_body")}</p>
-            {col.attested ? <Kv className="text-foreground" rows={[[t("tb_collector"), <Code>{col.id ?? "—"}</Code>], ["key id", <Sha value={col.key_id} />], [t("tb_custody"), col.custody ?? "—"], [t("tb_isolation"), col.isolation == null ? "—" : <Code>{typeof col.isolation === "string" ? col.isolation : JSON.stringify(col.isolation)}</Code>]]} /> : null}
+            {col.attested ? <Kv className="text-foreground" rows={[[t("tb_collector"), <Code>{col.id ?? "—"}</Code>], ["key id", <Sha value={col.key_id} />], [t("tb_custody"), col.custody ?? "—"], [t("tb_isolation"), col.isolation == null ? "—" : typeof col.isolation === "object" && ("execution" in col.isolation || "backend" in col.isolation)
+              ? <div className="grid gap-1.5"><IsolationPart label={t("tb_isolation_backend")} part={col.isolation.backend} /><IsolationPart label={t("tb_isolation_execution")} part={col.isolation.execution} /></div>
+              : <Code>{typeof col.isolation === "string" ? col.isolation : JSON.stringify(col.isolation)}</Code>]]} /> : null}
             {(col.problems ?? []).length > 0 ? <ul className="grid gap-1">{col.problems.map((p: string, i: number) => <li key={i} className="bg-muted/50 rounded border px-2 py-1 font-mono text-xs break-words">{p}</li>)}</ul> : null}
             {record.collectors ? <div className="flex flex-wrap items-center gap-2 text-xs">{t("tb_collectors_file")} <Code>{record.collectors.path}</Code><Sha value={record.collectors.sha256} /></div> : null}
           </BoundaryRow>
@@ -176,7 +184,7 @@ export function TrustBoundary({ run, record }: { run: any; record?: any }) {
           {required.length > 0 ? <p>{t("capabilities_note_body")}</p> : null}
         </BoundaryRow>
         {trust.isolation ? (
-          <BoundaryRow icon={BanIcon} title={t("tb_isolation")} tone={trust.isolation.execution?.enforced && trust.isolation.backend?.enforced ? "ok" : "neutral"}>
+          <BoundaryRow icon={BanIcon} title={t("tb_isolation")} tone={isolationEnforced(trust.isolation) ? "ok" : "neutral"}>
             <IsolationPart label={t("tb_isolation_backend")} part={trust.isolation.backend} />
             <IsolationPart label={t("tb_isolation_execution")} part={trust.isolation.execution} />
           </BoundaryRow>
@@ -250,15 +258,17 @@ export function VerdictTab({ run, outcome, reverify }: { run: any; outcome: any;
 
 function Issued({ run, outcome, busy, act }: { run: any; outcome: any; busy: string | null; act: (body: any, label: string) => Promise<void> }) {
   const { record, requirements } = outcome;
+  // Which collectors file the verifier trusts: the repository's (the command line's default) or the one this run's stored verdict used.
+  const [collectors, setCollectors] = React.useState<string>(run.recorded_collectors && record.collectors?.path === run.recorded_collectors ? "recorded" : "repository");
   const extra = new Map<string, any>(requirements.map((r: any) => [r.id, r]));
   const blocking = record.results.filter((r: any) => r.level === "mandatory" && r.status !== "pass");
   const [open, setOpen] = React.useState<string[]>(() => blocking.map((r: any) => r.requirement));
   const style = VERDICT_STYLE[record.verdict] ?? VERDICT_STYLE.none!;
   const contractKey = `${record.contract.id}@${record.contract.version}`;
-  const contractOf = (key = contractKey) => { const [contract, version] = key.split("@"); return { contract, version }; };
+  const contractOf = (key = contractKey, which = collectors) => { const [contract, version] = key.split("@"); return { contract, version, collectors: which }; };
   const task = run.reproduction_tasks[0]?.path;
   const repoFlag = run.summary.runtime ? `${run.summary.path}/workspace` : ".";
-  const flags = record.reproduction?.requested ? ` --reproduce --task ${task ?? "<task>"}` : "";
+  const flags = (record.reproduction?.requested ? ` --reproduce --task ${task ?? "<task>"}` : "") + (record.collectors && collectors === "recorded" ? ` --collectors ${record.collectors.path}` : "");
   const focus = (id: string) => { setOpen((o) => (o.includes(id) ? o : [...o, id])); requestAnimationFrame(() => jump(id)); };
   const pct = record.summary.mandatory > 0 ? Math.round((100 * record.summary.passed) / record.summary.mandatory) : 0;
 
@@ -302,6 +312,15 @@ function Issued({ run, outcome, busy, act }: { run: any; outcome: any; busy: str
               <SelectContent>{run.contracts.map((c: any) => <SelectItem key={`${c.id}@${c.version}`} value={`${c.id}@${c.version}`}>{c.id} {c.version}</SelectItem>)}</SelectContent>
             </Select>
           ) : null}
+          {run.recorded_collectors ? (
+            <Select value={collectors} disabled={busy !== null} onValueChange={(v) => { setCollectors(v); act(contractOf(contractKey, v), t("checking")); }}>
+              <SelectTrigger size="sm" className="bg-background" aria-label={t("trusted_collectors")}><ShieldCheckIcon /><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="repository">{t("collectors_repository")}</SelectItem>
+                <SelectItem value="recorded">{t("collectors_recorded")}</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : null}
           <Button variant="outline" size="sm" className="bg-background" disabled={busy !== null} onClick={() => act(contractOf(), t("checking"))}><RefreshCwIcon className={cn(busy === t("checking") && "animate-spin")} />{t("verify_again")}</Button>
           {task ? <Button size="sm" disabled={busy !== null} onClick={() => act({ ...contractOf(), reproduce_task: task }, t("reexecuting"))}>{busy === t("reexecuting") ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}{t("verify_reexecute")}</Button> : null}
           {busy ? <span className="text-muted-foreground text-sm">{busy}</span> : null}
@@ -336,6 +355,7 @@ function Issued({ run, outcome, busy, act }: { run: any; outcome: any; busy: str
           [t("reproduction"), record.reproduction?.requested ? <span className="flex flex-wrap items-center gap-2">{t("reproduction_requested")} · task <Sha value={record.reproduction.task_sha256} /></span> : t("reproduction_not_requested")],
           [t("exit_code_equiv"), <Code>{String(outcome.exit_code)}</Code>],
           [t("record_schema"), <Code>{record.record_schema ?? "—"}</Code>],
+          run.recorded_collectors ? [t("trusted_collectors"), <span className="text-muted-foreground text-sm">{t("trusted_collectors_hint")}</span>] : null,
           record.collectors ? [t("tb_collectors_file"), <span className="flex flex-wrap items-center gap-2"><Code>{record.collectors.path}</Code><Sha value={record.collectors.sha256} /></span>] : null,
           [t("cli_equivalent"), <Code>{`node src/cli.ts verify ${run.summary.path} --contract ${record.contract.path} --repo ${repoFlag}${flags}`}</Code>],
         ]} />

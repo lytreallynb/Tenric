@@ -10,7 +10,7 @@ import { SimpleTable } from "@/components/app/data-table";
 import { ChartBox, ChartTip } from "@/components/app/chart";
 import { Loaded } from "@/components/app/load";
 import { useCrumbs } from "@/components/app/shell";
-import { VerdictTab } from "./run-verdict";
+import { isolationEnforced, VerdictTab } from "./run-verdict";
 import { api } from "@/lib/api.js";
 import { bytes, num, show } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
@@ -214,7 +214,7 @@ function PhaseChart({ phases }: { phases: any[] }) {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }} barCategoryGap={6}>
               <CartesianGrid horizontal={false} />
-              <XAxis type="number" unit=" s" tickLine={false} axisLine={false} domain={[0, "dataMax"]} />
+              <XAxis type="number" tickLine={false} axisLine={false} domain={[0, "dataMax"]} tickFormatter={(v) => `${num(Math.round(v * 10) / 10)} s`} />
               <YAxis type="category" dataKey="name" width={88} tickLine={false} axisLine={false} className="font-mono" />
               <Tooltip cursor={{ fill: "var(--muted)" }} content={({ active, payload }: any) => active && payload?.length ? <ChartTip active payload={[{ ...payload[payload.length - 1], name: payload[payload.length - 1].payload.label, color: "var(--chart-2)" }]} format={(v: number) => `${num(v)} s`} /> : null} />
               <Bar dataKey="offset" stackId="a" fill="transparent" isAnimationActive={false} />
@@ -338,7 +338,7 @@ function Fact({ label, children, sub, className }: { label: React.ReactNode; chi
       <CardContent className="grid gap-1.5 px-4">
         <div className="text-muted-foreground text-xs font-medium">{label}</div>
         <div className="flex min-h-6 flex-wrap items-center gap-2">{children}</div>
-        {sub ? <div className="text-muted-foreground text-xs break-all">{sub}</div> : null}
+        {sub ? <div className="text-muted-foreground text-xs break-words">{sub}</div> : null}
       </CardContent>
     </Card>
   );
@@ -348,11 +348,11 @@ function TrustFact({ run, outcome, onOpen }: { run: any; outcome: any; onOpen: (
   const trust = run.trust ?? {};
   const col = outcome?.issued ? outcome.record.collector : undefined;
   const isolation = trust.isolation
-    ? <Status word={trust.isolation.backend?.enforced && trust.isolation.execution?.enforced ? "enforced" : "not enforced"} />
+    ? <Status word={isolationEnforced(trust.isolation) ? "enforced" : "not enforced"} />
     : <NotAvailableBadge text={t("not_recorded")} />;
   const attestation = col ? <Status word={col.attested ? "attested" : "not attested"} /> : trust.attestation ? <Status word="signed" /> : <NotAvailableBadge text={t("unsigned")} />;
   return (
-    <Fact label={<button type="button" onClick={onOpen} className="hover:text-foreground underline-offset-4 hover:underline">{t("tb_title")}</button>}>
+    <Fact className="col-span-2 xl:col-span-1" label={<button type="button" onClick={onOpen} className="hover:text-foreground underline-offset-4 hover:underline">{t("tb_title")}</button>}>
       <div className="grid w-full gap-1.5 text-xs">
         <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">{t("tb_isolation")}</span>{isolation}</div>
         <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">{t("tb_attestation")}</span>{attestation}</div>
@@ -390,7 +390,7 @@ export function RunDetail({ args: [id, initialTab] }: { args: (string | undefine
             {s.origin === "fixture" ? <Notice kind="warn" title={t("fixture_title")}>{t("fixture_body")}</Notice>
               : s.data_class === "fixture" ? <Notice kind="warn" title={t("fixture_run_title")}>{t("fixture_run_body")}</Notice> : null}
             {s.readable ? null : <Notice kind="bad" title={t("artifact_unreadable")}>{s.error}</Notice>}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
               <Fact label={t("verdict")} sub={current.issued ? `${current.record.summary.passed} / ${current.record.summary.mandatory} ${t("mandatory_passed_l")} · ${current.record.contract.version}` : "—"}>
                 {current.issued ? <Status word={current.record.verdict} className="text-sm" /> : <NoVerdict />}
               </Fact>
@@ -398,7 +398,7 @@ export function RunDetail({ args: [id, initialTab] }: { args: (string | undefine
                 {s.status ? <Status word={s.status} /> : "—"}{s.exit_code !== undefined ? <span className="text-muted-foreground font-mono text-xs">exit {s.exit_code}</span> : null}
               </Fact>
               <Fact label={t("source_revision")} sub={s.runtime ? `${t("lifecycle_status")} ${s.runtime.status ?? "unknown"}` : s.source?.kind ?? "—"}><Revision source={s.source} /></Fact>
-              <Fact label={t("data_class")} sub={<span className="inline-flex items-center gap-1">artifact <Sha value={s.artifact_sha256} /></span>}><DataClass value={s.data_class} /></Fact>
+              <Fact label={t("data_class")} sub={<span className="inline-flex flex-wrap items-center gap-1">artifact <Sha value={s.artifact_sha256} /></span>}><DataClass value={s.data_class} /></Fact>
               <TrustFact run={run} outcome={current} onOpen={openTrust} />
             </div>
             {failure ? <Notice kind="bad" title={`${t("failure_record")}: ${failure.reason}`}>{failure.stderr_tail ? <Pre className="mt-1 w-full whitespace-pre-wrap">{failure.stderr_tail}</Pre> : null}</Notice> : null}
