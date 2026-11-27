@@ -4,7 +4,7 @@
 // under which contract, plan and runtime revision, and how the backend and the experiment were
 // confined. The signature is made with the runtime's own key (src/runtime/keys.ts), which no
 // sandboxed process can read. Checking it is the verifier's business (src/attestation.ts).
-import { createPrivateKey, sign } from "node:crypto";
+import { signStatement, type Attestation } from "../attestation.ts";
 import type { IsolationRecord } from "./sandbox.ts";
 import type { CollectorIdentity } from "./keys.ts";
 
@@ -25,24 +25,11 @@ export interface CollectorStatement {
   isolation: { backend: IsolationRecord | null; execution: IsolationRecord };
 }
 
-/** Sorted keys at every level, no whitespace. Refuses floats, so the bytes are unambiguous. */
-export function canonicalBytes(value: unknown): Buffer {
-  const walk = (v: unknown): unknown => {
-    if (typeof v === "number" && !Number.isInteger(v)) throw new Error(`refusing to sign a non-integer number: ${v}`);
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().map((k) => [k, walk((v as Record<string, unknown>)[k])]));
-    return v;
-  };
-  return Buffer.from(JSON.stringify(walk(value)), "utf8");
-}
-
-export function signStatement(statement: CollectorStatement, identity: CollectorIdentity) {
-  const value = sign(null, canonicalBytes(statement), createPrivateKey(identity.private_key_pem)).toString("base64");
-  return {
-    attestation_schema: "0.1.0",
-    statement,
-    signature: { alg: "ed25519", key_id: identity.key_id, public_key: identity.public_key, value },
-  };
+/** Signs with the verifier's own serialisation (src/attestation.ts), so there is one definition of the signed bytes. */
+export function signRecord(statement: CollectorStatement, identity: CollectorIdentity): Attestation {
+  const attestation = signStatement(statement as unknown as Record<string, unknown>, identity.private_key_pem);
+  if (attestation.signature.key_id !== identity.key_id) throw new Error("the signing key is not the identity's key");
+  return attestation;
 }
 
 /** Why a run may not be signed, or null when it may. The key must never vouch for a run whose code could have read it. */

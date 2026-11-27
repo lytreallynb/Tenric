@@ -16,7 +16,7 @@ import type { Backend, BackendResult } from "./backends.ts";
 import { collect, CollectorError, type Artifact, type CollectOptions, type CollectResult } from "./collector.ts";
 import { compile } from "./compiler.ts";
 import { git, sha256File, stableJson, toPosix, utcNow, writeJson } from "./util.ts";
-import { refusalToSign, signStatement } from "./attest.ts";
+import { refusalToSign, signRecord } from "./attest.ts";
 import { keyDir, loadOrCreateIdentity } from "./keys.ts";
 import type { IsolationRecord } from "./sandbox.ts";
 
@@ -240,7 +240,7 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
           } catch {
             // Not a git checkout: recorded as unknown.
           }
-          const signed = signStatement({
+          const signed = signRecord({
             type: "tenric.collector-record", version: "0.1.0", collector_id: identity.id,
             run_id: toPosix(runDir).split("/").filter(Boolean).pop()!, issued_at: utcNow(),
             subject: { artifact_path: "artifact.json", artifact_sha256: artifactSha },
@@ -268,7 +268,7 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
             runDir, contractPath: join(repoRoot, plan.contract.path), repo: workspace,
             registryPath: join(repoRoot, plan.contract.registry_path), reproduce: { taskPath: reproduceTask },
             ...(collectorsPath ? { collectorsPath } : {}),
-          } as Parameters<typeof verify>[0]);
+          });
           if (record.contract.sha256 !== plan.contract.sha256 || record.contract.registry_sha256 !== plan.contract.registry_sha256) {
             throw new Error("the contract or its registry is not the one the plan was compiled against");
           }

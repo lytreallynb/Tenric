@@ -42,9 +42,9 @@ function taskWith(mutate: (task: any) => void): string {
   return path;
 }
 interface Outcome { run: RunSummary; dir: string; artifact: any; results: Record<string, string>; events: any[] }
-async function run(backend: Backend, options: { taskPath?: string; signal?: AbortSignal; repoRoot?: string } = {}): Promise<Outcome> {
+async function run(backend: Backend, options: { taskPath?: string; signal?: AbortSignal; repoRoot?: string; allowUnsandboxed?: boolean } = {}): Promise<Outcome> {
   const dir = join(scratch("tenric-runs-"), "run");
-  const summary = await runTask({ taskPath: options.taskPath ?? TASK, backend, runDir: dir, signal: options.signal, repoRoot: options.repoRoot });
+  const summary = await runTask({ taskPath: options.taskPath ?? TASK, backend, runDir: dir, signal: options.signal, repoRoot: options.repoRoot, allowUnsandboxed: options.allowUnsandboxed });
   const read = (path: string) => (existsSync(join(dir, path)) ? readJson(join(dir, path)) : undefined) as any;
   return {
     run: summary, dir, artifact: read("artifact.json"),
@@ -118,6 +118,8 @@ describe("a run with a well-behaved producer", () => {
     const done = spawnSync(process.execPath, [
       "src/tenric.ts", "verify", good.dir, "--contract", CONTRACT, "--repo", join(good.dir, "workspace"),
       "--reproduce", "--task", join(good.dir, "tenric/reproduce.task.json"),
+      // The runtime judged with its own key trusted; the command line must be given the same collectors file.
+      ...(good.run.attestation ? ["--collectors", join(process.env.TENRIC_KEY_DIR!, "collectors.json")] : []),
     ], { cwd: REPO_ROOT, encoding: "utf8" });
     expect(done.stdout).toContain(`verdict: ${good.run.verification!.wording}`);
     expect(done.status).toBe(0);
@@ -253,7 +255,8 @@ describe("failures are recorded, never dropped, and never accepted", () => {
       run: async () => ({ outcome: "timeout", exit_code: null, seconds: 1, detail: "simulated", self_report: {}, isolation: null }),
     };
     const outcome = await run(failing);
-    expect(outcome.run.status).toBe("timeout");
+    // The message carries status_detail, so a failure in CI says why (a macOS run once gave "void" here).
+    expect(outcome.run.status, outcome.run.status_detail ?? "").toBe("timeout");
     expect(outcome.artifact.failure.reason).toMatch(/backend failing-test-backend did not complete \(timeout\): simulated/);
     expect(outcome.events.find((e) => e.type === "execution.started").executed).toBe(false);
     expect(outcome.run.verification!.verdict).toBe("rejected");
@@ -396,7 +399,7 @@ describe("claude-code adapter logic, against a fake CLI (not a model)", () => {
   const fake = (mode: string) => new ClaudeCodeBackend({ command: [process.execPath, REPO_ROOT + "tests/runtime/fake-claude.mjs", `--mode=${mode}`] });
 
   it("passes the compiled instructions, stores the stream as the backend's account, and reports cost as backend-reported", async () => {
-    const outcome = await run(fake("ok"));
+    const outcome = await run(fake("ok"), { allowUnsandboxed: true });
     expect(outcome.run.status).toBe("completed");
     expect(outcome.run.backend).toMatchObject({ name: "claude-code", kind: "agent", outcome: "completed" });
     expect(outcome.run.backend.self_report).toMatchObject({ model: "fake-model-not-a-model", cost_usd: 0.0123, turns: 3, unparsed_stream_lines: 1 });
@@ -418,7 +421,7 @@ describe("claude-code adapter logic, against a fake CLI (not a model)", () => {
   };
   for (const [mode, [status, reason]] of Object.entries(incomplete)) {
     it(`fails closed when the CLI ends with ${mode}`, async () => {
-      const outcome = await run(fake(mode));
+      const outcome = await run(fake(mode), { allowUnsandboxed: true });
       expect(outcome.run.status).toBe(status);
       expect(outcome.run.status_detail).toMatch(reason);
       expect(outcome.run.verification!.verdict).toBe("rejected");
@@ -427,7 +430,7 @@ describe("claude-code adapter logic, against a fake CLI (not a model)", () => {
 
   it("kills a CLI that exceeds the backend time limit", async () => {
     const started = Date.now();
-    const outcome = await run(fake("hang"), { taskPath: taskWith((t) => { t.limits.backend_timeout_seconds = 2; }) });
+    const outcome = await run(fake("hang"), { taskPath: taskWith((t) => { t.limits.backend_timeout_seconds = 2; }), allowUnsandboxed: true });
     expect(Date.now() - started).toBeLessThan(30_000);
     expect(outcome.run.status).toBe("timeout");
     expect(outcome.run.backend.outcome).toBe("timeout");
