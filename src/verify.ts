@@ -4,8 +4,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { ATTESTATION_PATH, checkAttestation, loadCollectors, type Collectors } from "./attestation.ts";
 import { runChecks } from "./checks.ts";
-import { DEFAULT_REGISTRY_PATH, loadRegisteredContract, REPO_ROOT, sha256File, type Level, type Requirement } from "./spec.ts";
+import { DEFAULT_COLLECTORS_PATH, DEFAULT_REGISTRY_PATH, loadRegisteredContract, readJson, REPO_ROOT, sha256File, type Level, type Requirement } from "./spec.ts";
 import { decide, type CheckStatus, type Verdict } from "./verdict.ts";
 
 /** Verification could not start (RFC-0001 section 7.2 rule 6). No verdict exists; this is the caller's failure, not the producer's. */
@@ -20,6 +21,8 @@ export interface VerifyOptions {
   reproduce?: { taskPath: string };
   /** Registry the contract must be listed in. Defaults to the verifier's own spec/contracts/registry.json. */
   registryPath?: string;
+  /** Collector keys the operator trusts. Defaults to the verifier's own spec/collectors/registry.json, which lists none. */
+  collectorsPath?: string;
 }
 
 export interface RequirementResult {
@@ -43,7 +46,14 @@ export interface VerdictRecord {
   /** null when the verifier is not running from a git checkout. dirty means the verifier's own code had uncommitted changes. */
   verifier: { revision: string | null; dirty: boolean | null };
   reproduction: { requested: boolean; task_sha256?: string };
-  /** Capabilities the contract requires of the environment. This verifier cannot establish any of them (docs/trust-model.md). */
+  /** Trusted collector keys this verdict was computed with. */
+  collectors: { path: string; sha256: string };
+  /**
+   * Who collected the evidence. attested is true only when tenric/attestation.json is signed by a
+   * non-revoked key in the collectors file and names this artifact, its revision and this contract.
+   */
+  collector: { attested: boolean; id: string | null; key_id: string | null; custody: string | null; isolation: unknown; problems: string[] };
+  /** Capabilities the contract requires, and those the attesting collector's entry in the collectors file establishes. */
   capabilities: { required: string[]; established: string[] };
   results: RequirementResult[];
   summary: { mandatory: number; passed: number; machine: number; empirical: number; human: number };
@@ -79,8 +89,16 @@ export function verify(options: VerifyOptions): VerdictRecord {
     }
   }
 
+  const collectorsPath = options.collectorsPath ?? DEFAULT_COLLECTORS_PATH;
+  let collectors: Collectors;
+  try {
+    collectors = loadCollectors(collectorsPath);
+  } catch (error) {
+    throw new PreconditionError(`cannot use collectors file ${collectorsPath}: ${(error as Error).message}`);
+  }
+
   const { contract } = bound;
-  const checked = runChecks(contract, runDir, { repo: options.repo, reproduce: options.reproduce });
+  const checked = runChecks(contract, runDir, { repo: options.repo, reproduce: options.reproduce, collectors, contractSha256: bound.sha256 });
   const { verdict } = decide(contract, checked);
   const byId = new Map(checked.map((result) => [result.requirement, result]));
   const results = contract.requirements.map((requirement): RequirementResult => {
@@ -97,6 +115,19 @@ export function verify(options: VerifyOptions): VerdictRecord {
   const count = (kind: string) => passed.filter((r) => r.verifiability === kind).length;
   const summary = { mandatory: mandatory.length, passed: passed.length, machine: count("machine"), empirical: count("empirical"), human: count("human") };
   const artifactPath = join(runDir, "artifact.json");
+  const artifactSha = existsSync(artifactPath) ? sha256File(artifactPath) : null;
+  // Reported under every contract, so that no verdict reads as if the evidence came from a trusted collector when it did not.
+  let attestation: ReturnType<typeof checkAttestation> = { problems: ["artifact.json is missing"] };
+  if (artifactSha) {
+    let revision: string | undefined;
+    try { revision = (readJson(artifactPath) as { source?: { revision?: string } }).source?.revision; } catch { /* reported by R-001 */ }
+    attestation = checkAttestation(join(runDir, ATTESTATION_PATH), collectors, {
+      artifactSha256: artifactSha, sourceRevision: revision,
+      contract: { id: contract.id, version: contract.version, sha256: bound.sha256 },
+    });
+  }
+  const attested = attestation.problems.length === 0 && attestation.collector !== undefined;
+  const who = attested ? `; evidence collected by ${attestation.collector!.id} (attested)` : "; collector not attested";
   // Forward slashes in the record on every platform, like every other path a tool writes.
   const shownPath = artifactPath.replaceAll("\\", "/");
   return {
@@ -105,13 +136,22 @@ export function verify(options: VerifyOptions): VerdictRecord {
     statement:
       `${verdict} under contract ${contract.id} version ${contract.version}: ` +
       `${summary.passed} of ${summary.mandatory} mandatory requirements passed ` +
-      `(${summary.machine} machine, ${summary.empirical} empirical, ${summary.human} human)`,
+      `(${summary.machine} machine, ${summary.empirical} empirical, ${summary.human} human)` + who,
     issued_at: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
     contract: { id: contract.id, version: contract.version, path: contractPath, sha256: bound.sha256, registered: true, registry_sha256: bound.registry.sha256 },
-    artifact: { path: shownPath, sha256: existsSync(artifactPath) ? sha256File(artifactPath) : null },
+    artifact: { path: shownPath, sha256: artifactSha },
     verifier: verifierIdentity(),
     reproduction: options.reproduce ? { requested: true, task_sha256: taskSha! } : { requested: false },
-    capabilities: { required: contract.applicability?.requires_capabilities ?? [], established: [] },
+    collectors: { path: collectorsPath.replaceAll("\\", "/"), sha256: sha256File(collectorsPath) },
+    collector: {
+      attested,
+      id: attested ? attestation.collector!.id : null,
+      key_id: attested ? attestation.collector!.key_id : null,
+      custody: attested ? attestation.collector!.custody : null,
+      isolation: attested ? (attestation.statement?.isolation ?? null) : null,
+      problems: attestation.problems,
+    },
+    capabilities: { required: contract.applicability?.requires_capabilities ?? [], established: attested ? [...attestation.collector!.establishes] : [] },
     results,
     summary,
   };
@@ -132,8 +172,12 @@ export function formatRecord(record: VerdictRecord): string {
     lines.push(`${result.requirement}  ${result.status.padEnd(7)}  ${result.title} (${result.level}, ${result.verifiability})`);
     if (result.detail) lines.push(`       ${result.detail}`);
   }
-  if (record.capabilities.required.length > 0) {
-    lines.push(`note: the contract requires capabilities this verifier cannot establish: ${record.capabilities.required.join(", ")}`);
+  lines.push(record.collector.attested
+    ? `collector: ${record.collector.id}, attested by key ${record.collector.key_id} (custody: ${record.collector.custody})`
+    : `collector: not attested (${record.collector.problems.join("; ")})`);
+  const missing = record.capabilities.required.filter((c) => !record.capabilities.established.includes(c));
+  if (missing.length > 0) {
+    lines.push(`note: the contract requires capabilities that are not established for this run: ${missing.join(", ")}`);
   }
   lines.push(`verdict: ${record.statement}`);
   return lines.join("\n") + "\n";
