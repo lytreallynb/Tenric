@@ -2,11 +2,11 @@
 name = "tenric-experiments"
 version = "0.0.0"
 description = "Research execution side of Tenric: baseline experiments and deterministic plotting."
-requires-python = ">=3.12,<3.14"
+requires-python = "==3.13.14"
 dependencies = [
-    "matplotlib>=3.11.2",
-    "numpy>=2.5.5",
-    "scikit-learn>=1.9.1",
+    "matplotlib==3.11.2",
+    "numpy==2.5.5",
+    "scikit-learn==1.9.1",
 ]
 
 [tool.uv]

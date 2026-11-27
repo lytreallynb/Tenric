@@ -38,6 +38,10 @@ PINNED_ENV = {
     "TZ": "UTC",
     "LC_ALL": "C.UTF-8",
 }
+# Interpreter variables that change what the experiment imports or runs. They are
+# removed from the experiment's environment: a clean git tree says nothing about
+# PYTHONPATH (a sitecustomize.py found there runs before the experiment does).
+SCRUBBED_ENV_PREFIX = "PYTHON"
 TRACKED_PACKAGES = ["numpy", "scipy", "scikit-learn", "matplotlib", "pillow", "fonttools"]
 TIMEOUT_SECONDS = 300
 
@@ -97,7 +101,7 @@ def collect_dataset() -> dict:
 def display_path(path: Path) -> str:
     """Repository-relative when possible, so artifacts do not embed machine-specific absolute paths."""
     resolved = path.resolve()
-    return str(resolved.relative_to(REPO)) if resolved.is_relative_to(REPO) else resolved.name
+    return resolved.relative_to(REPO).as_posix() if resolved.is_relative_to(REPO) else resolved.name
 
 
 def describe_output(out: Path, rel: str, role: str, media_type: str, determinism: str) -> dict:
@@ -114,7 +118,7 @@ def describe_output(out: Path, rel: str, role: str, media_type: str, determinism
 
 
 def render_report(artifact: dict, out: Path) -> None:
-    template = string.Template((HERE / "report.template.md").read_text())
+    template = string.Template((HERE / "report.template.md").read_text(encoding="utf-8"))
     metrics = {m["name"]: m["value"] for m in artifact["metrics"]}
     src = artifact["source"]
     hashed = [o for o in artifact["outputs"] if o["role"] != "report"]
@@ -140,7 +144,7 @@ def render_report(artifact: dict, out: Path) -> None:
         findings="\n".join(f'- **{f["id"]}** {f["statement"]} (supported by: {", ".join(f["supported_by"])})' for f in artifact["findings"]),
         limitations="\n".join(f"- {text}" for text in artifact["limitations"]),
         reproduction="\n".join(artifact["reproduction"]["commands"]),
-    ))
+    ), encoding="utf-8", newline="\n")
 
 
 def main() -> int:
@@ -156,12 +160,14 @@ def main() -> int:
         print(f"refusing to run: output directory {out} is not empty", file=sys.stderr)
         return 2
 
-    config = json.loads(args.config.read_text())
-    command = [sys.executable, str(HERE / "experiment.py"), "--config", str(args.config.resolve()), "--out", str(out)]
+    config = json.loads(args.config.read_text(encoding="utf-8"))
+    # -s: no user site directory, which is outside the lockfile and outside git.
+    command = [sys.executable, "-s", str(HERE / "experiment.py"), "--config", str(args.config.resolve()), "--out", str(out)]
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     start = time.monotonic()
     try:
-        done = subprocess.run(command, env={**os.environ, **PINNED_ENV}, capture_output=True, text=True, timeout=args.timeout)
+        inherited = {k: v for k, v in os.environ.items() if not k.upper().startswith(SCRUBBED_ENV_PREFIX)}
+        done = subprocess.run(command, env={**inherited, **PINNED_ENV}, capture_output=True, text=True, timeout=args.timeout)
         status, exit_code, stderr = ("succeeded" if done.returncode == 0 else "failed"), done.returncode, done.stderr
     except subprocess.TimeoutExpired as error:
         status, exit_code, stderr = "timeout", None, str(error)
@@ -209,7 +215,7 @@ def main() -> int:
             describe_output(out, "figures/confusion_matrix.spec.json", "figure-spec", "application/json", "byte-identical"),
             describe_output(out, "figures/confusion_matrix.png", "figure", "image/png", "byte-identical"),
         ]
-        produced = json.loads((out / "metrics.json").read_text())
+        produced = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
 
         def metric(name: str, pointer: str) -> dict:
             value = produced
@@ -249,7 +255,7 @@ def main() -> int:
     else:
         artifact["failure"] = {"reason": status, "stderr_tail": stderr[-2000:]}
 
-    (out / "artifact.json").write_text(json.dumps(artifact, sort_keys=True, indent=2) + "\n")
+    (out / "artifact.json").write_text(json.dumps(artifact, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"{status}: wrote {out / 'artifact.json'}")
     return 0 if status == "succeeded" else 1
 
