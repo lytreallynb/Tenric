@@ -85,7 +85,7 @@ export class ScriptBackend implements Backend {
       if (!existsSync(source) || !statSync(source).isDirectory()) return done("failed", `${request.task.script_producer} is not a directory`);
       if (!realpathSync(source).startsWith(realpathSync(request.repoRoot) + sep)) return done("failed", "script_producer resolves outside the repository");
     }
-    const skipped = new Set(["__pycache__", ".git", "TASK.md", "tenric.task.json"]);
+    const skipped = new Set(["__pycache__", ".git", ".gitattributes", "TASK.md", "tenric.task.json", "claims.schema.json"]);
     for (const name of readdirSync(source)) {
       if (skipped.has(name)) continue;
       cpSync(join(source, name), join(request.workspace, name), { recursive: true });
