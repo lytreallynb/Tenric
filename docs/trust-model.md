@@ -1,6 +1,6 @@
 # Trust boundary, invariants and failure model
 
-Status: proposed (Phase 0). Columns marked "Phase 0" say what is actually implemented and tested today.
+Status: proposed. Columns marked "Today" say what is actually implemented and tested (last updated for slice 1B/1C, 2026-11-27). Decisions are in `docs/adr/0007-trust-boundary-and-verdict-binding.md` and `docs/adr/0008-re-execution-by-the-verifier.md`.
 
 ## 1. Roles
 
@@ -26,7 +26,16 @@ Explicitly **outside** the TCB: the model, the agent harness, prompts, skills, A
 
 ### The gap that exists today
 
-In Phase 0 the producer and the collector run as the same OS user in the same working tree. A producer that wanted to could edit the collector, the contract, or `artifact.json` after the fact. The current design therefore detects *accidental* and *careless* violations (missing records, stale or edited outputs, mismatched numbers) and does **not** withstand a producer that deliberately attacks the collector. Closing this needs real isolation, and the options are in section 6. No document in this repository should claim more than this.
+Locally the producer, the collector and the verifier run as the same OS user in the same working tree. A producer that wanted to could edit the collector, the contract registry, the verifier or `artifact.json`. Closing this needs real isolation, and the options are in section 6. No document in this repository should claim more than this.
+
+What the verifier itself now does about it (ADR-0007, ADR-0008):
+
+- It treats the whole run directory as untrusted, including every `provenance` field. `provenance: "collector"` is a mark, not proof of who wrote the record.
+- It refuses a contract whose bytes are not the registered ones, and every verdict record names the contract, the registry, the artifact and the verifier by digest or revision.
+- It decides R-008 by re-executing the recorded revision itself, in a fresh worktree with a scrubbed environment, so a result that is merely self-consistent is rejected.
+- In CI a pull request is judged by the base commit's verifier, once the base branch has one.
+
+What still holds: on one machine these measures detect tampering only for a reader who compares the record with known digests, and the CI job can be edited by the pull request it judges until the owner protects the workflow.
 
 ## 3. Evidence versus claims
 
@@ -47,11 +56,11 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | --- | --- | --- |
 | I-1 | An artifact is `accepted` only if every mandatory requirement of the stated contract version has status `pass`. | Implemented in `src/verdict.ts`, tested exhaustively over all status combinations |
 | I-2 | A mandatory requirement whose validator failed to run, was unavailable, or was never executed blocks acceptance. | Implemented, tested |
-| I-3 | A verdict names exactly one contract id and version. Unknown contract schema versions are refused, never coerced. | Implemented in `loadContract`, tested |
-| I-4 | The producer cannot change the contract, the schemas, the collector or the verifier that judge its own output. | **Not enforced** (section 2) |
+| I-3 | A verdict names exactly one contract id and version, and the content it had. Unknown contract schema versions, unregistered contracts and contracts whose bytes differ from the registry are refused, never coerced. | Implemented in `loadRegisteredContract` and `verify`, tested |
+| I-4 | The producer cannot change the contract, the schemas, the collector or the verifier that judge its own output. | **Not enforced** locally (section 2). A changed contract is refused and a changed verifier shows in the record. A CI job judges pull requests with the base commit's verifier; it has not run yet, because the base branch has no verifier until this work is merged |
 | I-5 | Records marked `collector` were produced by code that does not import or execute producer code. | Held by construction in `run_baseline.py` (standard library only, subprocess boundary); not checked mechanically |
 | I-6 | Every output listed in an artifact is identified by content digest, and verification re-hashes the bytes. | Implemented, tested with seven tampering cases |
-| I-7 | A fixture can never be reported as a measurement: `data_class` is mandatory and fixtures say `fixture`. | Schema-enforced; no validator yet rejects a `fixture` under a contract that demands `measured` (open question Q11) |
+| I-7 | A fixture can never be reported as a measurement: `data_class` is mandatory and fixtures say `fixture`. | Schema-enforced; contract 0.2.0 rejects a `fixture` (R-010), tested. A fixture relabelled `measured` is rejected by other requirements, tested |
 | I-8 | Failure is recorded, never dropped: a failed, timed-out or cancelled run still yields an artifact with `execution.status` and a `failure` record. | Implemented in the collector for non-zero exit and timeout, both tested. Cancellation is not implemented: an interrupted run writes no artifact |
 | I-9 | A verdict does not assert semantic correctness. It asserts which requirements passed, by which means. | Convention; wording rule in AGENTS.md |
 
@@ -72,15 +81,18 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | Mismatched source identifier (artifact revision is not a commit in the repository verified) | R-006 fails | rejected | Yes. Equality with the checked-out tree is not required (open question Q13) |
 | Dirty working tree at run time | R-006 fails | rejected | Yes |
 | Evidence asserted by the producer instead of the collector | R-004 fails | rejected | Yes, as far as the `provenance` field goes. A producer that writes `collector` itself is the gap in section 2 |
+| Self-consistent forgery: outputs edited and re-hashed, or produced in a tampered interpreter environment | R-008: the verifier re-executes the recorded revision in a clean environment and compares | rejected | Yes, when verification is run with re-execution (review cases A1, A3, A6). Without it the verdict is inconclusive, never accepted |
+| Artifact that lists nothing, or is a fixture | R-010 fails | rejected | Yes (review case A2) |
+| Duplicate names, figures that point at unlisted files | R-011 fails | rejected | Yes (review case A3) |
 | Fabricated or unsupported finding | R-007 checks that citations resolve; R-009 (human) judges whether they justify the statement | rejected, or flagged | Yes for citations that do not resolve; the semantic part is never machine-decidable |
 | Incomplete execution, timeout, cancellation | Collector records the status; R-005 fails | rejected | Yes for a failed and a timed-out run, end to end. A cancelled status is rejected by R-005, but the collector does not record cancellation |
 | Validator crashes or is unavailable | Requirement status `error` or `not_run` | inconclusive | Yes (verdict logic) |
 | Unauthorized file access by the producer | Sandbox denies; attempts appear in the event log | rejected | **Not addressed** |
-| Unauthorized contract modification | Contract digest pinned before the run and compared after; contract lives outside the producer's writable area | none issued, run void | **Not addressed** |
+| Unauthorized contract modification | The contract's SHA-256 must equal the registry entry for its id and version | none issued | Yes for a contract file that differs from the registry (review cases A4, A5). A producer that also edits the registry is the gap in section 2; the record then shows another registry digest |
 | Symlinked output pointing outside the artifact directory | Verifier resolves real paths and refuses escapes | rejected | Yes (R-002 and R-003) |
 | Hash collision or weak digest | SHA-256 only; algorithm recorded with each digest in a future IR version | n/a | By choice of algorithm |
 
-Because one mandatory requirement (R-008, re-execution) has no validator yet, the real baseline run currently gets the verdict **inconclusive**, and a test asserts exactly that. Nothing in this repository has been `accepted`.
+Without a re-execution the real baseline run gets the verdict **inconclusive**, and a test asserts exactly that. With one, `npm run verify` requires it to be **accepted under contract research.experiment-report version 0.2.0**: 10 of 10 mandatory requirements passed (9 machine, 1 empirical, 0 human). That sentence is the whole claim. No person has reviewed the findings (R-009 is advisory and `not_run`), and the capabilities the contract asks for are not established.
 
 ## 6. Options for enforcing I-4 (decision needed, see the Phase 0 report)
 
@@ -92,3 +104,5 @@ Because one mandatory requirement (R-008, re-execution) has no validator yet, th
 | D. Digest pinning only | Record contract and verifier digests before the run, compare after | Very low | Detects tampering after the fact, if the comparison itself is trusted |
 
 Recommendation: D immediately (cheap, catches accidents), A as the default for anything called "accepted".
+
+State on 2026-11-27: D is implemented for the contract (registry) and recorded for the verifier (revision in every record). A is implemented as a CI job and has not executed yet. B and C are not started.

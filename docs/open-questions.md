@@ -16,16 +16,21 @@ Status: living document. Add to it instead of guessing.
 | Q8 | How should partial or failed work be delivered? | A failed run with an honest failure record is a valid deliverable under some contracts. The current contract makes success mandatory. |
 | Q9 | Is there measurable value over group C? | See the falsification condition in `docs/evaluation-plan.md`. |
 | Q10 | How are human review results recorded and bound to an artifact digest? | Needed before any contract with a mandatory `human` requirement can be accepted. |
-| Q11 | Should a contract be able to demand `data_class: "measured"`? | Invariant I-7. No requirement in contract 0.1.0 reads `data_class`, so a self-consistent fixture is not rejected for being a fixture. Needs a new check kind or a parameter on an existing one, which is a contract change. |
+| Q11 | Should a contract be able to demand `data_class: "measured"`? | Answered in contract 0.2.0: R-010 (`required-content`) does. Contract 0.1.0 is unchanged and still does not. |
 | Q12 | How is a snapshot source located and re-hashed? | The IR records `snapshot_sha256` and nothing else. Until this is answered `source-pinned` reports `error` for snapshots, so only git sources can pass R-006. |
-| Q13 | Must the recorded revision equal the tree being verified, or only exist in the repository? | `source-pinned` currently requires a commit that exists. Requiring equality with `HEAD` is stricter and would make older runs unverifiable. |
+| Q13 | Must the recorded revision equal the tree being verified, or only exist in the repository? | `source-pinned` requires a commit that exists; kept as the default without an explicit owner answer. With R-008 the revision must also reproduce the results, so naming an unrelated commit is rejected unless it behaves identically. |
+| Q14 | Should an unestablished capability block the verdict, as RFC-0001 section 7.2 rule 6 says? | The contract requires `independent-collector`. Nothing can attest that today, and the verifier issues a verdict anyway while stating that no capability is established. Enforcing rule 6 literally means no verdict exists outside a trusted runner. Owner decision. |
+| Q15 | How is the CI workflow itself protected from the pull request it judges? | The job that verifies with the base commit's verifier is defined in a file the pull request can edit. Needs a repository rule (required workflow, or a protected path with owner review). Only the owner can set it. |
+| Q16 | What is the root of trust for the contract registry once contracts leave this repository? | `spec/contracts/registry.json` is trusted because the verifier's checkout is. Distribution needs signatures or a transparency log. |
+| Q17 | Is running the producer's code on the verifier's machine acceptable without a sandbox? | R-008 does exactly that. Fine for this repository's own experiment; not for code an agent wrote. |
+| Q18 | Should images be compared by decoded pixels instead of file bytes? | The figure is pixel-identical and not byte-identical across platforms. A `pixel-identical` determinism class would let the contract promise what actually holds; it needs an image decoder in the verifier. |
 
 ## Technical risks
 
 | Risk | Consequence | Mitigation or status |
 | --- | --- | --- |
 | Producer and verifier share a user and a working tree | Trust model is advisory against a deliberate producer | Known; options in `docs/trust-model.md` section 6; slice 1C |
-| Cross-platform numerical drift | "Reproducible" claims fail on a second machine | Untested; slice 1B |
+| Cross-platform numerical drift | "Reproducible" claims fail on a second machine | Metrics were identical on three platforms in the first CI run. The re-execution's cross-environment comparison (tolerance) has not been exercised by a real run: every re-execution so far ran in an environment equal to the original |
 | Canonical JSON is "sorted keys", not RFC 8785 | Digests of artifacts differ across implementations | Adopt JCS before any artifact digest is signed |
 | Collector and verifier are in different languages | Two hash and JSON implementations must agree | Fine for SHA-256 over bytes; a risk for anything canonicalised |
 | Schema strictness slows iteration | Every IR change breaks fixtures | Intended while the IR is small; revisit at the second artifact type |
@@ -42,7 +47,7 @@ Kept in one place: `docs/prior-art.md` section 5, and RFC-0001 section 10.
 ## Not verified in Phase 0
 
 - Any behaviour of any model or agent backend. No backend was invoked.
-- Reproduction on a second machine, operating system or architecture. Since done once in CI: see `docs/reports/ci-first-run.md`. Still open from that run: why the PNG differs between Linux and macOS/Windows; CRLF line endings in outputs written on Windows; the Python patch version varies per machine.
+- Reproduction on a second machine, operating system or architecture. Since done in CI: see `docs/reports/ci-first-run.md` and `docs/reports/phase-1b-report.md`. Line endings and the Python patch version are now controlled. The PNG difference is narrowed down: decoded pixels are equal on all three platforms and only the compressed stream differs. Which library build causes that is not determined.
 - The cancellation path through the collector, which is not implemented: an interrupted run writes no artifact. (Non-zero exit and timeout are tested.)
 - Prior-art entries marked "summary" or "recalled" in `docs/prior-art.md`.
 - That anyone other than the author can follow the README from a clean clone.
