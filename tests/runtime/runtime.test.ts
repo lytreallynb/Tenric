@@ -205,9 +205,11 @@ describe("failures are recorded, never dropped, and never accepted", () => {
     "an experiment that writes artifact.json itself": {
       source: PREAMBLE + `deliver(); (out / "artifact.json").write_text("{}")\n`, status: "failed", reason: /only the runtime may write/, fails: "R-005",
     },
-    "an experiment that edits its own workspace while running": {
-      source: PREAMBLE + `deliver(); pathlib.Path("config.json").write_text('{"seed": 8, "n_flips": 1, "p_heads": 1}')\n`, status: "completed", reason: /^$/, fails: "R-006",
-    },
+    // In the sandbox the workspace is read-only, so the write fails and the experiment with it. Without the sandbox
+    // the write succeeds and the dirty source is what gets the run rejected.
+    "an experiment that edits its own workspace while running": SANDBOX
+      ? { source: PREAMBLE + `deliver(); pathlib.Path("config.json").write_text('{"seed": 8, "n_flips": 1, "p_heads": 1}')\n`, status: "failed", reason: /exited with code/, fails: "R-005" }
+      : { source: PREAMBLE + `deliver(); pathlib.Path("config.json").write_text('{"seed": 8, "n_flips": 1, "p_heads": 1}')\n`, status: "completed", reason: /^$/, fails: "R-006" },
   };
   for (const [name, expected] of Object.entries(rejected)) {
     it(`${name} is rejected`, async () => {
