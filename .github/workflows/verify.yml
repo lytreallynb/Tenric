@@ -45,13 +45,20 @@ jobs:
             echo '```'
             sha256sum metrics.json figures/confusion_matrix.spec.json figures/confusion_matrix.png
             echo '```'
+            echo
+            echo 'Verdict record written by `npm run verify` (re-execution included):'
+            echo '```'
+            cat ../verdict.json 2>/dev/null || echo "not_run: no verdict record was written"
+            echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload the run directory
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: run-${{ matrix.os }}
-          path: runs/verify-a/
+          path: |
+            runs/verify-a/
+            runs/verdict.json
           if-no-files-found: error
           retention-days: 14
 
@@ -65,6 +72,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: runs
@@ -84,7 +92,7 @@ jobs:
           for f in $files; do
             seen=""
             for p in $platforms; do
-              path="runs/run-$p/$f"
+              path="runs/run-$p/verify-a/$f"
               if [ -f "$path" ]; then
                 d=$(sha256sum "$path" | cut -d' ' -f1)
               else
@@ -103,7 +111,7 @@ jobs:
           done
           for p in $platforms; do
             echo "== metrics.json on $p"
-            cat "runs/run-$p/metrics.json" 2>/dev/null || echo "not_run"
+            cat "runs/run-$p/verify-a/metrics.json" 2>/dev/null || echo "not_run"
           done
           {
             echo
@@ -116,3 +124,80 @@ jobs:
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$missing"
+      - name: Say how the figures differ (container, compression or pixels)
+        if: ${{ !cancelled() }}
+        run: |
+          # Diagnostic only: it reports and never fails the job. scripts/png_diff.py exits 2 when it cannot compare.
+          png="verify-a/figures/confusion_matrix.png"
+          {
+            echo "## Figure comparison"
+            for pair in "ubuntu-24.04 macos-15" "ubuntu-24.04 windows-2025" "macos-15 windows-2025"; do
+              set -- $pair
+              echo
+              echo "### $1 against $2"
+              echo '```'
+              python3 scripts/png_diff.py "runs/run-$1/$png" "runs/run-$2/$png" || echo "(exit $?)"
+              echo '```'
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Trust boundary, option A of docs/trust-model.md section 6: the pull request is
+  # judged by the verifier, contract, registry and task file of the branch it
+  # wants to merge into, not by its own copies. A pull request can still edit this
+  # workflow file; closing that needs a repository rule (docs/adr/0007).
+  probe-base:
+    name: does the base branch have a verifier
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      has_verifier: ${{ steps.probe.outputs.has_verifier }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - id: probe
+        run: |
+          if [ -f src/verify.ts ] && [ -f spec/contracts/registry.json ] && [ -f experiments/baseline/task.json ]; then
+            echo "has_verifier=true" >> "$GITHUB_OUTPUT"
+            echo "The base branch has a verifier. The pull request is judged by it in the next job." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_verifier=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::not_run: the base branch has no verifier that binds a contract, so this pull request is NOT judged by trusted code. The next job is skipped, which is not a pass."
+            echo "Result: **not_run**. The base branch has no verifier yet; the trusted verification job is skipped. This is not a pass." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  trusted-verify:
+    name: judged by the base branch's verifier
+    needs: probe-base
+    if: needs.probe-base.outputs.has_verifier == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: subject
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.5
+      - name: Install uv
+        run: pipx install uv==0.11.32
+      - name: Collect a run with the pull request's code
+        working-directory: subject
+        run: uv sync --locked && uv run --locked python experiments/baseline/run_baseline.py --out "$RUNNER_TEMP/run"
+      - name: Judge it with the base branch's verifier, contract and task file
+        working-directory: trusted
+        run: |
+          npm ci
+          set +e
+          node src/cli.ts verify "$RUNNER_TEMP/run" \
+            --contract spec/contracts/research.experiment-report/0.2.0.contract.json \
+            --repo ../subject --reproduce --task experiments/baseline/task.json \
+            --record "$RUNNER_TEMP/verdict.json" | tee "$RUNNER_TEMP/verdict.txt"
+          code=${PIPESTATUS[0]}
+          { echo '```'; cat "$RUNNER_TEMP/verdict.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
