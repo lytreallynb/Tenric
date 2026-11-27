@@ -2,7 +2,7 @@
 //
 //   backends [--json]                                  list backend adapters and what they guarantee
 //   compile  --task <file> --backend <name> [--json]   compile only
-//   run      --task <file> --backend <name> [--out <run-dir>] [--model <id>] [--no-reexecute] [--json]
+//   run      --task <file> --backend <name> [--out <run-dir>] [--model <id>] [--no-reexecute] [--allow-unsandboxed] [--json]
 //   collect  --workspace <dir> --out <dir> [--config <file>]   execute and collect a committed workspace
 //   runs     [--root <dir>] [--json]                   list runtime runs
 //   show     <run-dir> [--json]
@@ -48,7 +48,7 @@ if (command === "verify") {
       options: {
         task: { type: "string" }, backend: { type: "string" }, out: { type: "string" }, model: { type: "string" },
         root: { type: "string" }, workspace: { type: "string" }, config: { type: "string" },
-        json: { type: "boolean" }, "no-reexecute": { type: "boolean" },
+        json: { type: "boolean" }, "no-reexecute": { type: "boolean" }, "allow-unsandboxed": { type: "boolean" },
       },
     });
   } catch (error) {
@@ -93,7 +93,7 @@ if (command === "verify") {
     const controller = new AbortController();
     for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => controller.abort());
     try {
-      const summary = await runTask({ taskPath: values.task, backend, runDir, model: values.model, signal: controller.signal, reexecute: !values["no-reexecute"] });
+      const summary = await runTask({ taskPath: values.task, backend, runDir, model: values.model, signal: controller.signal, reexecute: !values["no-reexecute"], allowUnsandboxed: values["allow-unsandboxed"] });
       if (values.json) process.stdout.write(stableJson(summary));
       else {
         console.log(`run directory: ${runDir}`);

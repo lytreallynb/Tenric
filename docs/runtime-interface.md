@@ -20,6 +20,7 @@ The default root is `runs/`, which is not committed.
 | `tenric/reexecution.json` | runtime | The runtime's own second execution, compared per output and per metric. Informational; the verifier does not read it. |
 | `tenric/backend/` | adapter | The backend's own account: `prompt.txt`, `events.jsonl` (raw stream), `final_message.txt`, `result.json`, `stderr.txt`. Claims, not evidence. |
 | `tenric/execution.stdout.txt`, `tenric/execution.stderr.txt` | collector | Captured from the experiment process |
+| `tenric/attestation.json` | runtime, with its own key | The signed collector record (ADR-0011 format). Present only when the backend and the experiment ran in an enforced sandbox (ADR-0012). |
 
 A run directory written by the baseline script has no `tenric/` directory and is still a valid input to `tenric verify`.
 
@@ -34,7 +35,7 @@ A run directory written by the baseline script has no `tenric/` directory and is
 | `task` | `id`, `title`, `path`, `sha256` |
 | `contract` | `id`, `version`, `path`, `sha256` |
 | `backend` | `name`, `kind`, `outcome`, `seconds`, `self_report` (backend-reported: model, cost, turns, CLI version) |
-| `phases[]` | `name` (`compile`, `workspace`, `backend`, `integrity`, `commit`, `execute`, `reexecute`, `verify`), `status`, `started_at`, `seconds`, `detail` |
+| `phases[]` | `name` (`compile`, `workspace`, `backend`, `integrity`, `commit`, `execute`, `reexecute`, `attest`, `verify`), `status`, `started_at`, `seconds`, `detail` |
 | `source` | `revision` of the workspace commit, or null |
 | `trusted_base_sha256` | Digest over `spec/`, `src/`, `scripts/` and the lockfiles when the run started |
 | `artifact` | `path`, `sha256`, or null |
@@ -42,6 +43,9 @@ A run directory written by the baseline script has no `tenric/` directory and is
 | `reexecution` | `consistent_with_declared`, `path`; or null |
 | `review_notes[]` | Things for a human reviewer |
 | `files` | Run-relative paths of the records above, null when absent |
+| `isolation` | `backend` and `execution`, each null (no process ran) or `{mechanism: "linux-userns" \| "none", enforced, network: "host" \| "none", writable_paths[], detail}`. Set up and recorded by the runtime, not reported by the backend. |
+| `attestation` | `{format: "tenric.collector-record/0.1.0", path, subject_sha256, key_id, collector_id, signer: "runtime", verified_by: null}`, or null. Whether a verdict accepted it is in `tenric/verification.json` (`collector`, and R-012 under contract 0.4.0). |
+| `attestation_refused` | Why the run was not signed, or null |
 
 ### `tenric/plan.json` (`plan_schema` 0.1.0)
 
@@ -74,6 +78,17 @@ node src/tenric.ts verify <run-dir> --repo <run-dir>/workspace \
 `tenric/reproduce.task.json` holds the absolute path of the runtime checkout that wrote it, so this works on the machine that made the run and not on a copy elsewhere without editing that path.
 
 An agent run takes minutes and spends model usage. A caller should start it as a background process and follow `tenric/events.jsonl`.
+
+## Sandbox and key: environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `TENRIC_KEY_DIR` | Directory of the runtime's signing key and its `collectors.json`. Default `$XDG_CONFIG_HOME/tenric` or `~/.config/tenric`. Never exposed to a sandbox. |
+| `TENRIC_SANDBOX_READONLY` | Colon-separated absolute paths the agent's sandbox may read in addition to the defaults, for example the CLI's configuration directory. |
+| `CLAUDE_CONFIG_DIR` | When set, exposed read-only to the agent's sandbox. |
+| `TENRIC_SANDBOX=off` | Behave as if no sandbox could be built (for tests of the fallback). |
+
+`tenric run --allow-unsandboxed` runs an agent backend where no sandbox can be built. The run is recorded as unconfined and is not signed.
 
 ## Inputs
 
