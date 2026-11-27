@@ -63,6 +63,16 @@ A run directory written by the baseline script has no `tenric/` directory and is
 
 Exit codes of `run`, as for `verify`: 0 `accepted`, 1 `rejected`, 3 `inconclusive`, 2 no verdict issued (bad usage, a precondition failure before anything ran, or a `void` run).
 
+To judge a stored run again, name the run's workspace as the source repository, because that is where the recorded revision lives:
+
+```sh
+node src/tenric.ts verify <run-dir> --repo <run-dir>/workspace \
+  --contract spec/contracts/research.experiment-report/<version>.contract.json \
+  --reproduce --task <run-dir>/tenric/reproduce.task.json
+```
+
+`tenric/reproduce.task.json` holds the absolute path of the runtime checkout that wrote it, so this works on the machine that made the run and not on a copy elsewhere without editing that path.
+
 An agent run takes minutes and spends model usage. A caller should start it as a background process and follow `tenric/events.jsonl`.
 
 ## Inputs
