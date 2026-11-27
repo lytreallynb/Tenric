@@ -28,6 +28,14 @@ node src/cli.ts verify runs/baseline --contract spec/contracts/research.experime
 
 It prints each requirement's status and the verdict, and exits 0 only for `accepted`. The baseline is currently `inconclusive`: re-execution (R-008) has no validator yet. A run collected from a working tree with uncommitted changes is `rejected`.
 
+## Web interface
+
+```sh
+npm run ui        # then open http://localhost:4173
+```
+
+A local, read-only view of this checkout: contracts and their requirements, every run under `runs/`, the verdict for each run with the result of every requirement, evidence beside claims, output digests against the files on disk, a comparison of two runs, and the documents under `docs/`. It can also start a baseline run. It computes every verdict by calling the verifier and stores nothing. It listens on the loopback interface only; `TENRIC_UI_PORT` changes the port. It is implemented and tested, and not approved; see [ADR-0009](docs/adr/0009-local-web-interface.md) for what it is and is not.
+
 ## What is here
 
 | Path | Content |
@@ -42,6 +50,7 @@ It prints each requirement's status and the verdict, and exits 0 only for `accep
 | `spec/` | Contract schema, research Artifact IR schema, the first contract |
 | `experiments/baseline/` | CPU-only experiment and a conventional collector, in Python |
 | `src/`, `tests/` | Validators, the `verify` command line, verdict semantics as executable specification, tests |
+| `ui/` | The local web interface: `ui/server/` (Node `http`, TypeScript) and `ui/public/` (static files, no build step) |
 | `fixtures/` | Hand-written demonstration data, labelled as such |
 
 ## Ground rules
