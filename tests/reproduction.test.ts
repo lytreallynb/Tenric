@@ -22,7 +22,7 @@ describe("re-execution: the baseline run", () => {
     expect(r008(record).detail).toMatch(/^re-executed revision [0-9a-f]{40} in an equal environment: 3 metrics equal, 3 outputs byte-identical$/);
     expect(record.verdict).toBe("accepted");
     expect(record.statement).toBe(
-      "accepted under contract research.experiment-report version 0.2.0: 10 of 10 mandatory requirements passed (9 machine, 1 empirical, 0 human)",
+      "accepted under contract research.experiment-report version 0.2.0: 10 of 10 mandatory requirements passed (9 machine, 1 empirical, 0 human); collector not attested",
     );
     expect(record.reproduction.requested).toBe(true);
     expect(record.reproduction.task_sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -30,7 +30,7 @@ describe("re-execution: the baseline run", () => {
 
   it("is accepted under contract 0.1.0 as well", () => {
     expect(judge(RUN_A, CONTRACT_010).statement).toBe(
-      "accepted under contract research.experiment-report version 0.1.0: 8 of 8 mandatory requirements passed (7 machine, 1 empirical, 0 human)",
+      "accepted under contract research.experiment-report version 0.1.0: 8 of 8 mandatory requirements passed (7 machine, 1 empirical, 0 human); collector not attested",
     );
   }, SLOW);
 

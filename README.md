@@ -33,6 +33,7 @@ It prints the contract's SHA-256, the artifact's SHA-256, the verifier's revisio
 - With `--reproduce`, the verifier checks out the recorded revision into a fresh worktree, runs the experiment again in a clean environment and compares. Without it, R-008 is `not_run` and the verdict is at best `inconclusive`.
 - A contract file whose bytes are not the ones listed in `spec/contracts/registry.json` gets no verdict.
 - A run collected from a working tree with uncommitted changes is `rejected`.
+- Every verdict says whether a collector the operator trusts signed the run (`; collector not attested` otherwise). Contract 0.4.0 requires that signature (R-012). Trusted collectors are listed in `spec/collectors/registry.json`, which is empty, or in the file given with `--collectors`. `node src/cli.ts collector-key` makes a key and its entry; `node src/cli.ts attest` signs a run. See ADR-0011.
 - `accepted` means the listed requirements passed. It is not a statement that the findings are true, and the trust boundary has known gaps: read `docs/trust-model.md` before relying on a verdict.
 
 ## Running a task under a contract
@@ -53,7 +54,7 @@ node src/tenric.ts runs
 npm run ui        # then open http://localhost:4173
 ```
 
-A local, read-only view of this checkout: contracts and their requirements, every run under `runs/`, the verdict for each run with the result of every requirement, evidence beside claims, output digests against the files on disk, a comparison of two runs, and the documents under `docs/`. For runs made by the runtime it also shows the compiled plan, lifecycle events and the backend's own account, labelled as such. It can start a baseline run or a runtime run with any listed backend and task. It computes every verdict by calling the verifier and stores nothing. It listens on the loopback interface only; `TENRIC_UI_PORT` changes the port. It is implemented and tested, and not approved; see [ADR-0011](docs/adr/0011-local-web-interface.md) for what it is and is not.
+A local, read-only view of this checkout: contracts and their requirements, every run under `runs/`, the verdict for each run with the result of every requirement, evidence beside claims, output digests against the files on disk, a comparison of two runs, and the documents under `docs/`. For runs made by the runtime it also shows the compiled plan, lifecycle events and the backend's own account, labelled as such. It can start a baseline run or a runtime run with any listed backend and task. It computes every verdict by calling the verifier and stores nothing. It listens on the loopback interface only; `TENRIC_UI_PORT` changes the port. It is implemented and tested, and not approved; see [ADR-0012](docs/adr/0012-local-web-interface.md) for what it is and is not.
 
 ## What is here
 
@@ -66,7 +67,7 @@ A local, read-only view of this checkout: contracts and their requirements, ever
 | `docs/evaluation-plan.md` | How Tenric would be compared with instructions, skills and plain scripts |
 | `docs/phase-1-plan.md`, `docs/open-questions.md` | Next slice, unresolved questions, risks |
 | `docs/adr/` | Architecture decision records |
-| `spec/` | Contract schema, research Artifact IR schema, contracts 0.1.0 and 0.2.0, the contract registry |
+| `spec/` | Contract schema, research Artifact IR schema, contracts 0.1.0 to 0.4.0, the contract registry, the (empty) list of trusted collectors |
 | `experiments/baseline/` | CPU-only experiment and a conventional collector, in Python |
 | `src/runtime/`, `src/tenric.ts` | Contract compiler, execution runtime, collector, backend adapters, command line |
 | `tasks/`, `spec/runtime/` | Task files; schemas for tasks and for what a producer may claim |

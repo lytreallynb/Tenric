@@ -1,0 +1,90 @@
+# Trust boundary, option A of docs/trust-model.md section 6: a pull request is
+# judged by the verifier, contract, registry and task file of the branch it wants
+# to merge into, not by its own copies.
+#
+# This is a separate workflow on pull_request_target so that the definition of
+# this job is also taken from the base branch: a pull request that edits this
+# file does not change how it is judged (open question Q15). Until this file is
+# on the base branch, it does not run for pull requests into that branch.
+#
+# pull_request_target runs with the base repository's context, so this job runs
+# the pull request's code with care:
+# - the token is read-only (permissions below) and is not stored in either checkout;
+# - no secrets are used, and none may be added to this workflow;
+# - nothing is cached or uploaded, so nothing the pull request produces is reused
+#   by a later privileged run;
+# - the pull request's code runs only in the collect step and in the verifier's
+#   re-execution, both of which see the read-only token at most through the
+#   runner environment, never on disk.
+# See docs/adr/0007-trust-boundary-and-verdict-binding.md.
+name: trusted-verify
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-base:
+    name: does the base branch have a verifier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      has_verifier: ${{ steps.probe.outputs.has_verifier }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - id: probe
+        run: |
+          if [ -f src/verify.ts ] && [ -f spec/contracts/registry.json ] && [ -f experiments/baseline/task.json ]; then
+            echo "has_verifier=true" >> "$GITHUB_OUTPUT"
+            echo "The base branch has a verifier. The pull request is judged by it in the next job." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_verifier=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::not_run: the base branch has no verifier that binds a contract, so this pull request is NOT judged by trusted code. The next job is skipped, which is not a pass."
+            echo "Result: **not_run**. The base branch has no verifier yet; the trusted verification job is skipped. This is not a pass." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  trusted-verify:
+    name: judged by the base branch's verifier
+    needs: probe-base
+    if: needs.probe-base.outputs.has_verifier == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: subject
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.5
+      - name: Install uv
+        run: pipx install uv==0.11.32
+      - name: Install the base branch's verifier
+        working-directory: trusted
+        run: npm ci --ignore-scripts
+      - name: Collect a run with the pull request's code
+        working-directory: subject
+        run: uv sync --locked && uv run --locked python experiments/baseline/run_baseline.py --out "$RUNNER_TEMP/run"
+      - name: Judge it with the base branch's verifier, contract and task file
+        working-directory: trusted
+        # Contract 0.2.0: CI holds no collector key, so 0.4.0 (R-012) cannot pass here by design (Q21).
+        run: |
+          set +e
+          node src/cli.ts verify "$RUNNER_TEMP/run" \
+            --contract spec/contracts/research.experiment-report/0.2.0.contract.json \
+            --repo ../subject --reproduce --task experiments/baseline/task.json \
+            --record "$RUNNER_TEMP/verdict.json" | tee "$RUNNER_TEMP/verdict.txt"
+          code=${PIPESTATUS[0]}
+          { echo '### Verdict of the base branch'"'"'s verifier on this pull request'; echo '```'; cat "$RUNNER_TEMP/verdict.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"

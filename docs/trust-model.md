@@ -30,7 +30,7 @@ Locally the producer, the collector and the verifier run as the same OS user in 
 
 What the verifier itself now does about it (ADR-0007, ADR-0008):
 
-- It treats the whole run directory as untrusted, including every `provenance` field. `provenance: "collector"` is a mark, not proof of who wrote the record.
+- It treats the whole run directory as untrusted, including every `provenance` field. `provenance: "collector"` is a mark, not proof of who wrote the record. Contract 0.4.0 adds proof: a signature by a key the verifier's operator listed, over a statement naming this artifact, revision and contract (ADR-0011). The list in this repository is empty.
 - It refuses a contract whose bytes are not the registered ones, and every verdict record names the contract, the registry, the artifact and the verifier by digest or revision.
 - It decides R-008 by re-executing the recorded revision itself, in a fresh worktree with a scrubbed environment, so a result that is merely self-consistent is rejected.
 - In CI a pull request is judged by the base commit's verifier, once the base branch has one.
@@ -43,7 +43,7 @@ Every record in the Artifact IR carries `provenance`:
 
 | Value | Meaning | Can satisfy a mandatory evidence requirement? |
 | --- | --- | --- |
-| `collector` | Observed by trusted tooling outside the producer | Yes |
+| `collector` | Observed by trusted tooling outside the producer. Only as good as the signature behind it: from contract 0.4.0, a run must carry a statement signed by a collector the operator lists (ADR-0011) | Yes |
 | `human` | Entered by a person | Yes, for human-verifiable requirements |
 | `template` | Derived by fixed code from other records | Only as strong as its inputs |
 | `producer` | Asserted by the executing process or agent | **No.** At best it can be cross-checked. |
@@ -57,7 +57,7 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | I-1 | An artifact is `accepted` only if every mandatory requirement of the stated contract version has status `pass`. | Implemented in `src/verdict.ts`, tested exhaustively over all status combinations |
 | I-2 | A mandatory requirement whose validator failed to run, was unavailable, or was never executed blocks acceptance. | Implemented, tested |
 | I-3 | A verdict names exactly one contract id and version, and the content it had. Unknown contract schema versions, unregistered contracts and contracts whose bytes differ from the registry are refused, never coerced. | Implemented in `loadRegisteredContract` and `verify`, tested |
-| I-4 | The producer cannot change the contract, the schemas, the collector or the verifier that judge its own output. | **Not enforced** locally (section 2). A changed contract is refused and a changed verifier shows in the record. A CI job judges pull requests with the base commit's verifier; it has not run yet, because the base branch has no verifier until this work is merged |
+| I-4 | The producer cannot change the contract, the schemas, the collector or the verifier that judge its own output. | **Not enforced** locally (section 2). A changed contract is refused and a changed verifier shows in the record. A CI job judges pull requests with the base commit's verifier, from a workflow on `pull_request_target` that the pull request cannot edit (ADR-0007 amendment). It ran once, on pull request 5, and accepted. Into `main` it does not run until `main` has a verifier and this workflow |
 | I-5 | Records marked `collector` were produced by code that does not import or execute producer code. | Held by construction in `run_baseline.py` (standard library only, subprocess boundary); not checked mechanically |
 | I-6 | Every output listed in an artifact is identified by content digest, and verification re-hashes the bytes. | Implemented, tested with seven tampering cases |
 | I-7 | A fixture can never be reported as a measurement: `data_class` is mandatory and fixtures say `fixture`. | Schema-enforced; contract 0.2.0 rejects a `fixture` (R-010), tested. A fixture relabelled `measured` is rejected by other requirements, tested |
@@ -81,6 +81,7 @@ In the baseline, the metric *values* are `producer` claims: the experiment compu
 | Mismatched source identifier (artifact revision is not a commit in the repository verified) | R-006 fails | rejected | Yes. Equality with the checked-out tree is not required (open question Q13) |
 | Dirty working tree at run time | R-006 fails | rejected | Yes |
 | Evidence asserted by the producer instead of the collector | R-004 fails | rejected | Yes, as far as the `provenance` field goes. A producer that writes `collector` itself is the gap in section 2 |
+| Producer writes `collector` provenance about itself (control group B of the runtime evaluation) | R-012 (contract 0.4.0): no signed record from a collector the operator listed | rejected | Yes under 0.4.0 (`tests/attestation.test.ts`), including a self-made key and a record edited after signing. Under 0.1.0 to 0.3.0 the verdict states "collector not attested" and is not changed |
 | Self-consistent forgery: outputs edited and re-hashed, or produced in a tampered interpreter environment | R-008: the verifier re-executes the recorded revision in a clean environment and compares | rejected | Yes, when verification is run with re-execution (review cases A1, A3, A6). Without it the verdict is inconclusive, never accepted |
 | Artifact that lists nothing, or is a fixture | R-010 fails | rejected | Yes (review case A2) |
 | Duplicate names, figures that point at unlisted files | R-011 fails | rejected | Yes (review case A3) |

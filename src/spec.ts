@@ -10,6 +10,7 @@ export const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const SUPPORTED_CONTRACT_SCHEMA = "0.1.0";
 export const ARTIFACT_SCHEMA_PATH = "spec/research-report.artifact.schema.json";
 export const DEFAULT_REGISTRY_PATH = join(REPO_ROOT, "spec/contracts/registry.json");
+export const DEFAULT_COLLECTORS_PATH = join(REPO_ROOT, "spec/collectors/registry.json");
 
 export function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
