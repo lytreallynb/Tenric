@@ -30,7 +30,7 @@ They are independent in the ways that matter:
 | Dataset bytes | required | | required | Dataset file hashed by the collector |
 | Random seed | required | | required | In the config; passed to the split and the model |
 | Library versions | required (loosely) | required | required (exactly) | `uv.lock`, digest recorded; `uv run --locked` |
-| Interpreter version | loosely | loosely | required | Recorded; `.python-version` pins the minor version only |
+| Interpreter version | loosely | loosely | required | Recorded; `.python-version` pins the patch version (3.13.14) and uv installs it |
 | CPU architecture, BLAS build, thread count | affects last bits | | required | Threads pinned to 1; architecture recorded, **not controlled** |
 | Hash randomisation | | | required where set or dict order leaks | `PYTHONHASHSEED=0` |
 | Renderer and backend | | required | required | matplotlib version recorded; `Agg` forced |
@@ -38,6 +38,8 @@ They are independent in the ways that matter:
 | Host renderer configuration | | required | required | `matplotlib.rcdefaults()` discards any host `matplotlibrc` |
 | Template version | | required for the report | required | Template lives in the repository, so the source revision covers it |
 | Embedded metadata (software strings, timestamps) | | | required | PNG `Software` field removed; JSON written with sorted keys |
+| Line endings | | | required | Outputs are written with `\n` on every platform; `.gitattributes` checks text out as LF |
+| Interpreter environment variables (`PYTHONPATH`, `PYTHONSTARTUP`) | required | required | required | The collector removes every `PYTHON*` variable before adding its own pins; the verifier's re-execution uses an allowlist |
 | Wall-clock time, durations, hostnames, absolute paths | | | must be excluded or declared | Listed in `volatile_fields`; the command is recorded with placeholders |
 | Locale and timezone | | sometimes | sometimes | `LC_ALL=C.UTF-8`, `TZ=UTC` |
 
@@ -47,7 +49,7 @@ A finding from building this: the first figure rendered on the bootstrap machine
 
 Each output carries `determinism`:
 
-- `byte-identical`: equal digest expected for equal controlled inputs in the locked environment on the same platform.
+- `byte-identical`: equal digest expected for equal controlled inputs in the locked environment on the same platform. Across platforms this is not promised for the PNG: the three platforms render exactly the same pixels, and the Linux file is compressed differently from the macOS and Windows files (`docs/reports/phase-1b-report.md` section 5). The two JSON outputs were byte-identical on all three platforms once line endings were fixed.
 - `numeric-tolerance`: values agree within the tolerance the contract states; bytes may differ.
 - `volatile`: contains declared run-specific values (the rendered report includes start time and runtime).
 

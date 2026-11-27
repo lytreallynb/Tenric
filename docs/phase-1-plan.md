@@ -1,6 +1,6 @@
 # Phase 1 plan (proposed)
 
-Status: proposed. Slice 1A is implemented and tested, see `docs/reports/phase-1a-report.md`; it is not approved. Nothing else is started. Each slice ends with `npm run verify` passing and a short report.
+Status: proposed. Slice 1A is implemented and tested, see `docs/reports/phase-1a-report.md`. Slice 1B and the first two items of 1C are implemented and tested, see `docs/reports/phase-1b-report.md`. None of it is approved. 1D is not started in this repository's verification work. Each slice ends with `npm run verify` passing and a short report.
 
 ## Goal
 
@@ -31,11 +31,13 @@ Size: roughly 200 lines of TypeScript and tests. No new dependencies.
 - Run it on a second platform (a CI runner with a different OS or architecture) to get the first real cross-platform numbers and replace the placeholder tolerance.
 - After this the baseline can be `accepted`.
 
+Done differently from the sketch above: there is no separate `reproduce` command. `tenric verify --reproduce --task <file>` re-executes during verification, so that no reproduction record written beside the artifact has to be trusted (ADR-0008). The placeholder tolerance is unchanged: observed cross-platform metric differences are zero so far.
+
 ## 1C: an enforced trust boundary
 
 - Pin contract, schema and verifier digests in the verdict record.
 - CI workflow that runs collection and verification from the default branch's verifier. Requires the repository to be hosted.
-- Emit the verdict as an in-toto Statement whose subjects are the artifact's outputs. Sign in CI if artifact attestations are available.
+- Emit the verdict as an in-toto Statement whose subjects are the artifact's outputs. Sign in CI if artifact attestations are available. Not started; the verdict record is plain JSON (ADR-0007).
 
 ## 1D: a second task under the same contract
 
