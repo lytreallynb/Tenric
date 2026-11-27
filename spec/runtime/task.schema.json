@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tenric:spec:runtime:task:0.1.0",
+  "title": "Tenric task (v0.1.0, proposed)",
+  "description": "One piece of work to be delivered under one contract version. Written by the contract owner, never by the backend. A task names what to do; the contract says what an acceptable deliverable is.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runtime_task_schema", "id", "title", "contract"],
+  "properties": {
+    "runtime_task_schema": { "const": "0.1.0" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$", "description": "Becomes the experiment_id of the artifact." },
+    "title": { "type": "string", "minLength": 1 },
+    "data_class": {
+      "description": "measured unless the task is a demonstration fixture. A fixture task must say so in its title.",
+      "enum": ["measured", "fixture"]
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+      }
+    },
+    "brief": { "type": "string", "minLength": 1, "description": "What to investigate, in prose. Required by agent backends." },
+    "script_producer": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$",
+      "description": "Repository-relative directory holding a pre-written producer (experiment.py, config.json, claims.json). Required by the script backend."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend_timeout_seconds": { "type": "number", "exclusiveMinimum": 0 },
+        "backend_max_cost_usd": { "type": "number", "exclusiveMinimum": 0 },
+        "execution_timeout_seconds": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  }
+}
