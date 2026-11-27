@@ -6,7 +6,7 @@
 //   collect  --workspace <dir> --out <dir> [--config <file>]   execute and collect a committed workspace
 //   runs     [--root <dir>] [--json]                   list runtime runs
 //   show     <run-dir> [--json]
-//   verify   ...                                       passed through to src/cli.ts unchanged
+//   verify | attest | collector-key ...                passed through to src/cli.ts unchanged
 //
 // Exit codes for run, as for verify: 0 accepted, 1 rejected, 3 inconclusive,
 // 2 no verdict issued (bad usage, a precondition failure, or a void run).
@@ -36,8 +36,8 @@ function describeRun(run: RunSummary): string {
 }
 
 const command = process.argv[2];
-if (command === "verify") {
-  // The verifier's command line is not the runtime's to change. It reads process.argv itself.
+if (command === "verify" || command === "attest" || command === "collector-key") {
+  // The verifier's commands are not the runtime's to change. src/cli.ts reads process.argv itself.
   await import("./cli.ts");
 } else {
   let args;

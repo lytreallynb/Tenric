@@ -63,7 +63,7 @@ A run directory written by the baseline script has no `tenric/` directory and is
 | `collect --workspace <dir> --out <dir>` | Execute and collect a committed workspace. Used by the verifier's re-execution. |
 | `runs [--root <dir>] [--json]` | List `tenric/run.json` summaries under a root, newest first |
 | `show <run-dir> [--json]` | One run |
-| `verify …` | Passed through to `src/cli.ts` unchanged |
+| `verify …`, `attest …`, `collector-key …` | Passed through to `src/cli.ts` unchanged |
 
 Exit codes of `run`, as for `verify`: 0 `accepted`, 1 `rejected`, 3 `inconclusive`, 2 no verdict issued (bad usage, a precondition failure before anything ran, or a `void` run).
 

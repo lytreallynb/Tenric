@@ -1,15 +1,15 @@
-# Contract compiler, runtime and agent backend: first real runs
+# Contract compiler, runtime and agent backend: real runs, then a sandbox and a signed collector record
 
 | | |
 | --- | --- |
 | Date | 2026-11-27 |
-| Revisions quoted | Runtime runs (group D) and the group C run: verifier and runtime at `d80939d`. Group B runs: `d0629ed`, which differs from `d80939d` only by adding `evaluation/group-b/`. `npm run verify`: `c17ad74` |
+| Revisions quoted | Sections 3 to 7: runtime runs (group D) and the group C run at `d80939d`; group B runs at `d0629ed`, which differs from `d80939d` only by adding `evaluation/group-b/`; `npm run verify` at `c17ad74`. Section 10: all runs at `a3c62c5`; `npm run verify` as stated there |
 | Status | **Tested**. Not independently verified by a second party, not approved |
 | Author | An AI agent (Claude) |
-| Decisions | `docs/adr/0009-backend-authors-runtime-executes.md`, `docs/adr/0010-claude-code-cli-as-first-agent-backend.md` |
+| Decisions | `docs/adr/0009-backend-authors-runtime-executes.md`, `docs/adr/0010-claude-code-cli-as-first-agent-backend.md`, `docs/adr/0013-namespace-sandbox-for-producer-code.md`; ADR-0011 (collector attestation) is the verification branch's |
 | Data | `docs/reports/data/runtime-runs.json`: one record per run quoted here. The run directories are not committed |
 
-This covers the three components of RFC-0001 that were design only: the contract compiler, the execution runtime and the backend adapters. It reports what happened when real models were run through them, and what that says about the hypotheses in `docs/evaluation-plan.md`. Section 7 is the one the plan says the project depends on.
+This covers the three components of RFC-0001 that were design only: the contract compiler, the execution runtime and the backend adapters. It reports what happened when real models were run through them, and what that says about the hypotheses in `docs/evaluation-plan.md`. Section 7 is the one the plan says the project depends on. Section 10 reports a second round, after the owner asked to continue: the agent and its experiment now run in a sandbox, the runtime signs what it collected, and contract 0.4.0 requires that signature. Sections 3 to 9 are left as they were written, so the first round can be compared with the second; where the second round changes a conclusion, section 10 says so.
 
 Every model, cost and turn count below is what the backend said about itself (`provenance: producer`). Wall time, verdicts and digests were observed by the runtime or the verifier.
 
@@ -256,14 +256,110 @@ Effort was counted in lines written by one author, an AI agent. No person's time
 - Runs were made three at a time on four cores, and group B partly alongside other work, so wall times are rough. Costs are the backend's own figures.
 - Group A (agent with no standard at all) was not run.
 - The fault-injection set in the plan was applied to the runtime as tests (a backend that edits the contract, the schema, the plan or the task, plants an artifact, or writes one from the experiment). It was not applied to groups B and C.
-- No sandbox. An experiment written by a model ran on the host as the runtime's user. Tampering that is undone before the runtime looks is not detected.
+- No sandbox in the first round. An experiment written by a model ran on the host as the runtime's user. Tampering that is undone before the runtime looks is not detected. (Section 10: there is one now, Linux only.)
 - `tenric/reproduce.task.json` holds an absolute path, so a stored run can be judged again only on the machine that made it.
 - Nobody has checked that the accepted experiments are correct.
 
 ## 9. Decisions for the owner
 
 1. Whether to keep building the runtime given section 7, or cut back to the contract format, the verifier and a template collector, as the plan's rule suggests for script-driven work.
-2. Q19: whether a verdict must state who collected the evidence, which needs an attestation the runtime can make and a producer cannot.
-3. Q20: whether agent-written code may run without a sandbox. Until answered, runs should stay on disposable machines.
+2. Q19: whether a verdict must state who collected the evidence. Section 10 builds this; the owner decides whether contract 0.4.0's R-012 should be the standard, and who may hold collector keys (Q26).
+3. Q20: whether agent-written code may run without a sandbox. Section 10 refuses it by default on Linux and records it otherwise; whether the namespace sandbox is strong enough, or a VM per run is needed, is open.
 4. Whether a naming convention (`*_seconds`) is an acceptable way for a contract to grant a tolerance (Q24).
 5. Merging: this work is on `claude/project-thread-rh3xta`, based on the verification branch. Nothing is merged into `main`.
+
+## 10. Second round: sandbox, signed collector record, contract 0.4.0
+
+### 10.1 What changed
+
+| Change | Where |
+| --- | --- |
+| The agent backend runs in a Linux namespace sandbox: only the workspace is writable; the repository, the Python environment and the CLI's installation are read-only; no other host file or process is visible. Network stays on for the model | `src/runtime/sandbox.ts`, `sandbox.sh`, `backends.ts`; ADR-0013 |
+| The experiment runs in the same kind of sandbox with no network, the workspace read-only, and an empty directory of its own as the only writable path | `src/runtime/collector.ts` |
+| The runtime holds an Ed25519 key outside anything a sandbox can see, and signs a record of the artifact it assembled (artifact digest, workspace revision, contract, plan, runtime revision, both isolation records), only when both processes were confined | `src/runtime/keys.ts`, `attest.ts`, `runtime.ts` |
+| Contract 0.4.0 (the verification branch's) adds R-012: a collector the verifier's operator trusts signed a record of exactly this artifact, revision and contract | `spec/contracts/research.experiment-report/0.4.0.contract.json`, `src/attestation.ts` |
+| The three tasks moved to 0.4.0. Group B's agent runs in the same sandbox and is judged with the same trusted key | `tasks/`, `evaluation/group-b/run.ts` |
+| Where no sandbox exists the runtime refuses an agent backend unless overridden, and never signs | `runtime.ts`, `tests/runtime/sandbox.test.ts` |
+
+What the tests show about the boundary (`tests/runtime/sandbox.test.ts`, 12 tests): a sandboxed process does not see an unlisted host path, cannot write a read-only one, cannot remount it writable or unmount it even from a nested namespace, sees fewer than five processes, and has only a loopback interface when network is off. A fake agent cannot read the key file, write the repository or the contract registry. A changed artifact, a record re-signed with the producer's own key, and a record copied from another run each fail R-012. These are tests against a fake agent and a fixture producer, not against a model trying to escape.
+
+### 10.2 `npm run verify`
+
+<<VERIFY2>>
+
+### 10.3 The rerun
+
+Both groups at `a3c62c5`, from a clean checkout, two runtime runs and two group B runs at a time on the same 4-core machine, with the host's `MATPLOTLIBRC` removed for both groups (section 6 explains why). Two repetitions per task and model, and one run per task with the CLI's default model for group D. Nothing was retried or left out.
+
+Group D, through the runtime:
+
+| Task | Model | Runs | Accepted | Rejected | No verdict | Median seconds | Median cost (USD) | Median turns |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| digits-logreg | claude-haiku-5-5 | 2 | 2 | 0 | 0 | 71 | 0.018 | 12.5 |
+| digits-logreg | claude-opus-5-5 | 2 | 2 | 0 | 0 | 77 | 0.371 | 8 |
+| digits-logreg | claude-sonnet-5-5 | 2 | 2 | 0 | 0 | 21 | 0.087 | 3 |
+| digits-logreg | default (claude-mythos-5-2) | 1 | 1 | 0 | 0 | 65 | 0.693 | 5 |
+| ridge-diabetes | claude-haiku-5-5 | 2 | 2 | 0 | 0 | 102 | 0.025 | 16 |
+| ridge-diabetes | claude-opus-5-5 | 2 | 2 | 0 | 0 | 92 | 0.435 | 10 |
+| ridge-diabetes | claude-sonnet-5-5 | 2 | 2 | 0 | 0 | 29 | 0.112 | 4.5 |
+| ridge-diabetes | default (claude-mythos-5-2) | 1 | 1 | 0 | 0 | 85 | 0.846 | 11 |
+| sort-benchmark | claude-haiku-5-5 | 2 | 2 | 0 | 0 | 86 | 0.019 | 9 |
+| sort-benchmark | claude-opus-5-5 | 2 | 2 | 0 | 0 | 78 | 0.369 | 8.5 |
+| sort-benchmark | claude-sonnet-5-5 | 2 | 0 | 2 | 0 | 31 | 0.108 | 3.5 |
+| sort-benchmark | default (claude-mythos-5-2) | 1 | 1 | 0 | 0 | 66 | 0.599 | 4 |
+
+D: 21 runs, 19 accepted, 2 rejected, 0 no verdict, cost 5.22 USD
+
+Group B, the same models without the runtime:
+
+| Task | Model | Runs | Accepted | Rejected | No verdict | Median seconds | Median cost (USD) | Median turns |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| digits-logreg | claude-haiku-5-5 | 2 | 0 | 2 | 0 | 179 | 0.065 | 20 |
+| digits-logreg | claude-opus-5-5 | 2 | 0 | 2 | 0 | 179 | 0.826 | 19 |
+| digits-logreg | claude-sonnet-5-5 | 2 | 0 | 2 | 0 | 64 | 0.197 | 6.5 |
+| ridge-diabetes | claude-haiku-5-5 | 2 | 0 | 2 | 0 | 189 | 0.054 | 18 |
+| ridge-diabetes | claude-opus-5-5 | 2 | 0 | 2 | 0 | 196 | 0.838 | 13.5 |
+| ridge-diabetes | claude-sonnet-5-5 | 2 | 0 | 2 | 0 | 66 | 0.196 | 5.5 |
+| sort-benchmark | claude-haiku-5-5 | 2 | 0 | 2 | 0 | 213 | 0.057 | 15.5 |
+| sort-benchmark | claude-opus-5-5 | 2 | 0 | 2 | 0 | 179 | 0.773 | 12 |
+| sort-benchmark | claude-sonnet-5-5 | 2 | 0 | 2 | 0 | 69 | 0.198 | 4.5 |
+
+B: 18 runs, 0 accepted, 18 rejected, 0 no verdict, cost 6.40 USD
+
+Every one of the 21 runtime runs was signed and its record verified (`collector.attested` true in all 21 verdict records). Both rejections are the naming problem of section 3 again: sonnet named timings `builtin_median_seconds_n1000` and `builtin_median_seconds_largest`, which do not match `*_seconds`.
+
+All 18 group B runs were rejected, every one by R-012 (`no collector attestation at tenric/attestation.json: nothing shows who collected this evidence`). For 16 of them R-012 was the only failure: under contract 0.3.0 they would have been accepted. Of the other two, one also failed R-008 on the same naming problem, and one failed R-004 because the agent labelled its own records `producer`, which is the honest label. No group B agent wrote an attestation of its own, although the contract it was given names R-012.
+
+Medians per model, runtime against group B: haiku 84 s and 0.020 USD against 199 s and 0.056 USD; sonnet 28 s and 0.099 USD against 65 s and 0.197 USD; opus 83 s and 0.389 USD against 183 s and 0.813 USD. The ratios are as in the first round: group B costs two to three times as much and takes more than twice as long.
+
+What the sandbox cost: compared with the first round, the runtime's median backend phase went from 70.5 s to 73.5 s and the experiment's execution from 2.2 s to 2.6 s; backend costs per model are within a few percent of the first round. Runs were not interleaved the same way in the two rounds, so this is an upper bound on nothing; it shows no large overhead. Four runtime runs report one tool call refused by the CLI's permission settings, as in the first round; all four were accepted.
+
+### 10.4 What the signature does not prove
+
+A signature from a trusted key says that the holder of the key vouched for this artifact. It does not say which program collected it. To check this, the conventional collector's run from section 4 (group C, written and run by hand, no runtime) was signed with the runtime's own key using the verifier's `attest` command, and then verified:
+
+```
+$ node src/cli.ts attest <copy of runs/conventional-sort-benchmark> --contract spec/contracts/research.experiment-report/0.4.0.contract.json --key ~/.config/tenric/collector-key.pem --collector-id tenric-runtime@vm#6b428f2e6596
+$ node src/tenric.ts verify <copy> --contract spec/contracts/research.experiment-report/0.4.0.contract.json --repo . --reproduce --task experiments/sort-benchmark/task.json --collectors ~/.config/tenric/collectors.json
+R-012  pass     A collector the verifier's operator trusts signed a record of this artifact (mandatory, machine)
+verdict: accepted under contract research.experiment-report version 0.4.0: 11 of 11 mandatory requirements passed (10 machine, 1 empirical, 0 human); evidence collected by tenric-runtime@vm#6b428f2e6596 (attested)
+```
+
+The verdict says the evidence was collected by the runtime. It was not. The operator broke the key's stated custody ("signs only runs whose backend and experiment ran in an enforced sandbox"), and nothing can detect that. So R-012 is exactly as trustworthy as the person holding the key and the custody they promise. Against an agent that never sees the key, it holds; against the operator, it is a promise.
+
+The same experiment also shows the other side: a conventional collector can meet contract 0.4.0 with a key of its own and an honest custody statement. R-012 does not require the runtime; it requires a trusted signer.
+
+### 10.5 What this does to the conclusions of section 7
+
+1. **Evidence integrity is now distinguishable, for agents.** Section 7 point 2 said the verdict could not tell runtime-collected evidence from evidence an agent labelled itself. Under contract 0.4.0 it can: 21 of 21 runtime runs were attested, 0 of 18 group B runs were. That is the H2 claim made checkable by a third party who trusts the key.
+2. **Group B now fails, but by construction.** The contract requires a signature only a confined collector holds, so an agent working alone cannot pass it. That was decided when the contract was written, not discovered by the runs. What the runs add is that the requirement costs the runtime nothing measurable, that no agent tried to forge the record, and that without R-012 group B would again have been accepted as often as the runtime (16 of 18 here).
+3. **For script-driven tasks, H3 is unchanged: not supported.** A person running a conventional collector can sign with a key of their own, as 10.4 shows, so C still matches D on acceptance and still costs less to adapt for two tasks.
+4. **For agent-driven tasks, H3 is now supported on cost and on attested acceptance**, with the qualification of point 2. The runtime's place is narrower and clearer than in the first round: running code a model wrote, confining it, and vouching for what came out, so that a verifier can accept it without trusting the model. Whether that is worth the 1,600 lines plus the sandbox, key and signing (about 300 more) is the owner's call, not a measurement.
+
+### 10.6 Limits of the second round
+
+- Two repetitions per cell. Same machine, same harness, same author as round one.
+- The sandbox is Linux only and uses the runtime's own user on the host. It does not limit network, CPU, memory or disk. The agent's sandbox in this container can read `/home/claude/.claude` (the CLI needs it to authenticate; exposed with `TENRIC_SANDBOX_READONLY`), which may contain credentials and session data of the CLI.
+- The verifier re-executes group B's agent-written `collect.py` directly, without a sandbox (Q17).
+- The key is a file in the operator's home directory. There is no rotation beyond revocation, no timestamp and no transparency log (Q26).
+- The boundary tests use a fake agent. No model was asked to escape the sandbox.
