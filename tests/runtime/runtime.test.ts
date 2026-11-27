@@ -12,12 +12,16 @@ import { ClaudeCodeBackend, ScriptBackend, type Backend, type BackendRunRequest 
 import { PreconditionError } from "../../src/runtime/compiler.ts";
 import { listRuns, readRun } from "../../src/runtime/runs.ts";
 import { runTask, type RunSummary } from "../../src/runtime/runtime.ts";
+import { sandboxAvailability } from "../../src/runtime/sandbox.ts";
 import { readJson, sha256File } from "../../src/runtime/util.ts";
 
 const TASK = REPO_ROOT + "fixtures/tasks/coin-flips.task.json";
 const PRODUCER = REPO_ROOT + "fixtures/producers/coin-flips";
 const CONTRACT = "spec/contracts/research.experiment-report/0.1.0.contract.json";
 const LONG = 120_000;
+const SANDBOX = sandboxAvailability().available;
+// Tests sign with a throwaway key, never with the machine's own.
+process.env.TENRIC_KEY_DIR = mkdtempSync(join(tmpdir(), "tenric-test-keys-"));
 
 const scratch = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
 function producer(mutate: (dir: string) => void): ScriptBackend {
@@ -64,11 +68,13 @@ describe("a run with a well-behaved producer", () => {
   it("completes, and every phase is recorded", () => {
     expect(good.run).toMatchObject({ run_schema: "0.1.0", status: "completed", status_detail: null, data_class: "fixture" });
     expect(good.run.phases.map((p) => [p.name, p.status])).toEqual([
-      ["compile", "ok"], ["workspace", "ok"], ["backend", "ok"], ["integrity", "ok"], ["commit", "ok"], ["execute", "ok"], ["reexecute", "ok"], ["verify", "ok"],
+      ["compile", "ok"], ["workspace", "ok"], ["backend", "ok"], ["integrity", "ok"], ["commit", "ok"], ["execute", "ok"], ["reexecute", "ok"],
+      ...(SANDBOX ? [["attest", "ok"]] : []), ["verify", "ok"],
     ]);
     expect(good.events.map((e) => e.type)).toEqual([
       "run.started", "workspace.prepared", "backend.started", "backend.finished", "integrity.checked", "workspace.committed",
-      "execution.started", "execution.finished", "artifact.written", "reexecution.finished", "verification.finished", "run.finished",
+      "execution.started", "execution.finished", "artifact.written", "reexecution.finished",
+      SANDBOX ? "attestation.signed" : "attestation.refused", "verification.finished", "run.finished",
     ]);
     expect(good.events.map((e) => e.seq)).toEqual(good.events.map((_, i) => i + 1));
     expect(new Set(good.events.map((e) => e.source))).toEqual(new Set(["runtime", "collector"]));
@@ -242,7 +248,7 @@ describe("failures are recorded, never dropped, and never accepted", () => {
   it("a backend that does not complete yields a failed artifact naming the backend, and nothing is executed", async () => {
     const failing: Backend = {
       describe: () => ({ ...new ScriptBackend().describe(), name: "failing-test-backend" }),
-      run: async () => ({ outcome: "timeout", exit_code: null, seconds: 1, detail: "simulated", self_report: {} }),
+      run: async () => ({ outcome: "timeout", exit_code: null, seconds: 1, detail: "simulated", self_report: {}, isolation: null }),
     };
     const outcome = await run(failing);
     expect(outcome.run.status).toBe("timeout");
@@ -305,7 +311,7 @@ describe("a backend that touches what judges it voids the run: no artifact, no v
     run: async (request) => {
       cpSync(PRODUCER, request.workspace, { recursive: true });
       act(request);
-      return { outcome: "completed", exit_code: 0, seconds: 0, self_report: {} };
+      return { outcome: "completed", exit_code: 0, seconds: 0, self_report: {}, isolation: null };
     },
   });
   function repoCopy(): string {

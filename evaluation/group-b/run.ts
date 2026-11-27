@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { REPO_ROOT } from "../../src/spec.ts";
 import { PreconditionError, verify } from "../../src/verify.ts";
+import { keyDir } from "../../src/runtime/keys.ts";
 import { ClaudeCodeBackend } from "../../src/runtime/backends.ts";
 import type { Task } from "../../src/runtime/schemas.ts";
 import { git, readJson, toPosix, utcNow, writeJson } from "../../src/runtime/util.ts";
@@ -40,6 +41,8 @@ const backend = await new ClaudeCodeBackend().run({
   task, instructions, workspace: staging, recordDir: join(out, "record", "backend"), repoRoot: REPO_ROOT,
   limits: { timeoutSeconds: task.limits?.backend_timeout_seconds ?? 1200, maxCostUsd: task.limits?.backend_max_cost_usd ?? 10 },
   model: values.model,
+  // The same sandbox as under the runtime, so the groups differ only in who collects the evidence.
+  hidden: [keyDir()], requireSandbox: true,
 });
 const workspace = join(out, "workspace");
 cpSync(staging, workspace, { recursive: true, verbatimSymlinks: true });

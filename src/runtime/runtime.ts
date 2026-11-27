@@ -2,8 +2,10 @@
 // workspace, check that nothing the verdict depends on was touched, execute and
 // collect, execute again and compare, verify, and record every step.
 //
-// The trust boundary it draws is detection, not prevention: the backend and
-// the experiment run as the same OS user as the runtime (docs/trust-model.md).
+// On Linux the backend and the experiment run in a namespace sandbox that sees
+// neither the run directory nor the runtime's signing key (src/runtime/sandbox.ts),
+// and the runtime signs the artifact it assembled (tenric/attestation.json). The
+// integrity checks below remain as a second line for platforms without the sandbox.
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
@@ -14,6 +16,9 @@ import type { Backend, BackendResult } from "./backends.ts";
 import { collect, CollectorError, type Artifact, type CollectOptions, type CollectResult } from "./collector.ts";
 import { compile } from "./compiler.ts";
 import { git, sha256File, stableJson, toPosix, utcNow, writeJson } from "./util.ts";
+import { refusalToSign, signStatement } from "./attest.ts";
+import { keyDir, loadOrCreateIdentity } from "./keys.ts";
+import type { IsolationRecord } from "./sandbox.ts";
 
 export type RunStatus = "completed" | "failed" | "timeout" | "cancelled" | "void";
 export interface Phase { name: string; status: "ok" | "failed" | "skipped"; started_at: string; seconds: number; detail?: string }
@@ -36,6 +41,11 @@ export interface RunSummary {
   reexecution: { consistent_with_declared: boolean; path: string } | null;
   review_notes: string[];
   files: Record<string, string | null>;
+  /** How the backend and the experiment were confined. */
+  isolation: { backend: IsolationRecord | null; execution: IsolationRecord | null };
+  /** The runtime's signed collector record, or why there is none. */
+  attestation: { format: "tenric.collector-record/0.1.0"; path: string; subject_sha256: string; key_id: string; collector_id: string; signer: "runtime"; verified_by: null } | null;
+  attestation_refused: string | null;
 }
 
 export interface RunOptions {
@@ -48,6 +58,10 @@ export interface RunOptions {
   /** Execute the experiment a second time and compare. On by default. */
   reexecute?: boolean;
   repoRoot?: string;
+  /** Directory of the runtime's signing key. Default: keyDir(). */
+  keyDir?: string;
+  /** Run an agent backend even where no sandbox can be built. Such a run is never signed. */
+  allowUnsandboxed?: boolean;
 }
 
 /** Paths whose content decides what "accepted" means or how it is decided. */
@@ -113,6 +127,9 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
   let revision: string | null = null;
   let verification: RunSummary["verification"] = null;
   let reexecution: RunSummary["reexecution"] = null;
+  let attestation: RunSummary["attestation"] = null;
+  let attestation_refused: string | null = null;
+  const keys = options.keyDir ?? keyDir();
 
   try {
     // The backend works in a directory outside the repository, so relative paths cannot reach the contract,
@@ -135,7 +152,7 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
     backendResult = await phase("backend", () => options.backend.run({
       task, instructions: plan.instructions, workspace: staging, recordDir: join(recordDir, "backend"), repoRoot,
       limits: { timeoutSeconds: plan.limits.backend_timeout_seconds, maxCostUsd: plan.limits.backend_max_cost_usd },
-      model: options.model, signal: options.signal,
+      model: options.model, signal: options.signal, hidden: [keys], requireSandbox: !options.allowUnsandboxed,
       onEvent: ({ type, ...fields }) => emit("backend", type, fields),
     }));
     emit("runtime", "backend.finished", { outcome: backendResult.outcome, seconds: backendResult.seconds, detail: backendResult.detail ?? null });
@@ -181,7 +198,7 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
       emit("collector", "execution.started", { executed: !notExecuted });
       collected = await phase("execute", () => collect({
         workspace, outDir: runDir, recordDir, task, repoRoot,
-        executionTimeoutSeconds: plan.limits.execution_timeout_seconds, signal: options.signal, notExecuted,
+        executionTimeoutSeconds: plan.limits.execution_timeout_seconds, signal: options.signal, notExecuted, hidden: [keys],
       }));
       emit("collector", "execution.finished", { status: collected.status, detail: collected.detail, outputs: collected.artifact.outputs.length });
       emit("collector", "artifact.written", { sha256: sha256File(join(runDir, "artifact.json")) });
@@ -189,7 +206,7 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
       status_detail = collected.detail;
 
       if (collected.status === "succeeded" && options.reexecute !== false && !options.signal?.aborted) {
-        const outcome = await phase("reexecute", () => reexecute(collected!.artifact, { workspace, recordDir, task, repoRoot, timeout: plan.limits.execution_timeout_seconds, signal: options.signal }));
+        const outcome = await phase("reexecute", () => reexecute(collected!.artifact, { workspace, recordDir, task, repoRoot, timeout: plan.limits.execution_timeout_seconds, signal: options.signal, hidden: [keys] }));
         reexecution = { consistent_with_declared: outcome, path: "tenric/reexecution.json" };
         emit("runtime", "reexecution.finished", { consistent_with_declared: outcome });
       }
@@ -208,12 +225,50 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
           collect: ["node", toPosix(join(repoRoot, "src/tenric.ts")), "collect", "--workspace", ".", "--config", "{config}", "--out", "{out}"],
           timeout_seconds: plan.limits.execution_timeout_seconds + 120,
         });
+        // Sign what the runtime assembled, but only when no code it ran could have read the key.
+        attestation_refused = refusalToSign(plan.backend.kind, backendResult.isolation, collected.isolation);
+        let collectorsPath: string | undefined;
+        if (attestation_refused === null && revision) {
+          const identity = await phase("attest", () => loadOrCreateIdentity(keys));
+          collectorsPath = identity.collectors_path;
+          const artifactSha = sha256File(join(runDir, "artifact.json"));
+          let runtimeRevision: string | null = null;
+          let runtimeDirty: boolean | null = null;
+          try {
+            runtimeRevision = git(repoRoot, "rev-parse", "HEAD");
+            runtimeDirty = git(repoRoot, "status", "--porcelain", "--", ...TRUSTED_BASE) !== "";
+          } catch {
+            // Not a git checkout: recorded as unknown.
+          }
+          const signed = signStatement({
+            type: "tenric.collector-record", version: "0.1.0", collector_id: identity.id,
+            run_id: toPosix(runDir).split("/").filter(Boolean).pop()!, issued_at: utcNow(),
+            subject: { artifact_path: "artifact.json", artifact_sha256: artifactSha },
+            source_revision: revision,
+            contract: { id: plan.contract.id, version: plan.contract.version, sha256: plan.contract.sha256 },
+            registry_sha256: plan.contract.registry_sha256,
+            task: { id: task.id, sha256: plan.task.sha256 },
+            plan_sha256: planSha,
+            runtime: { revision: runtimeRevision, dirty: runtimeDirty, trusted_base_sha256: baseBefore },
+            backend: { name: plan.backend.name, kind: plan.backend.kind },
+            isolation: { backend: backendResult.isolation, execution: collected.isolation! },
+          }, identity);
+          writeJson(join(recordDir, "attestation.json"), signed);
+          attestation = {
+            format: "tenric.collector-record/0.1.0", path: "tenric/attestation.json", subject_sha256: artifactSha,
+            key_id: identity.key_id, collector_id: identity.id, signer: "runtime", verified_by: null,
+          };
+          emit("runtime", "attestation.signed", { key_id: identity.key_id, subject_sha256: artifactSha });
+        } else {
+          emit("runtime", "attestation.refused", { reason: attestation_refused });
+        }
         verification = await phase("verify", () => {
           // The verdict is the verifier's: this is the same entry point `tenric verify` uses, with the registry that was pinned at compile time.
           const record = verify({
             runDir, contractPath: join(repoRoot, plan.contract.path), repo: workspace,
             registryPath: join(repoRoot, plan.contract.registry_path), reproduce: { taskPath: reproduceTask },
-          });
+            ...(collectorsPath ? { collectorsPath } : {}),
+          } as Parameters<typeof verify>[0]);
           if (record.contract.sha256 !== plan.contract.sha256 || record.contract.registry_sha256 !== plan.contract.registry_sha256) {
             throw new Error("the contract or its registry is not the one the plan was compiled against");
           }
@@ -231,9 +286,11 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
     emit("runtime", "run.error", { detail: status_detail });
   }
   if (status === "void") {
-    // A void run leaves no artifact to be mistaken for a deliverable.
+    // A void run leaves no artifact to be mistaken for a deliverable, and no signature over one.
     rmSync(join(runDir, "artifact.json"), { force: true });
+    rmSync(join(recordDir, "attestation.json"), { force: true });
     verification = null;
+    attestation = null;
   }
 
   const has = (path: string) => (existsSync(join(runDir, path)) ? path : null);
@@ -259,7 +316,11 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
       plan: "tenric/plan.json", events: "tenric/events.jsonl", verification: has("tenric/verification.json"),
       backend_dir: has("tenric/backend"), execution_stdout: has("tenric/execution.stdout.txt"), execution_stderr: has("tenric/execution.stderr.txt"),
       reexecution: has("tenric/reexecution.json"), reproduce_task: has("tenric/reproduce.task.json"), report: has("report.md"),
+      attestation: has("tenric/attestation.json"),
     },
+    isolation: { backend: backendResult?.isolation ?? null, execution: collected?.isolation ?? null },
+    attestation,
+    attestation_refused,
   };
   emit("runtime", "run.finished", { status, verdict: verification?.verdict ?? null });
   writeJson(join(recordDir, "run.json"), summary);
@@ -273,12 +334,12 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
  * an input for people; the verifier's re-execution requirement is decided by
  * the verifier, not by this record.
  */
-async function reexecute(first: Artifact, context: { workspace: string; recordDir: string; task: CollectOptions["task"]; repoRoot: string; timeout: number; signal?: AbortSignal }): Promise<boolean> {
+async function reexecute(first: Artifact, context: { workspace: string; recordDir: string; task: CollectOptions["task"]; repoRoot: string; timeout: number; signal?: AbortSignal; hidden: string[] }): Promise<boolean> {
   const scratch = mkdtempSync(join(tmpdir(), "tenric-reexec-"));
   try {
     const second = await collect({
       workspace: context.workspace, outDir: scratch, recordDir: join(scratch, "tenric"), task: context.task, repoRoot: context.repoRoot,
-      executionTimeoutSeconds: context.timeout, signal: context.signal, writeArtifact: false,
+      executionTimeoutSeconds: context.timeout, signal: context.signal, writeArtifact: false, hidden: context.hidden,
     });
     const again = new Map(second.artifact.outputs.map((o) => [o.path, o]));
     const outputs = first.outputs.filter((o) => o.role !== "report").map((o) => {

@@ -7,11 +7,14 @@
 // It never imports or evaluates producer code, and it writes provenance
 // "collector" only on records it observed itself.
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scrubbedEnvironment } from "../reproduce.ts";
+import { keyDir } from "./keys.ts";
 import { renderReport } from "./report.ts";
+import { pythonPaths, sandboxed, type IsolationRecord } from "./sandbox.ts";
 import { validateClaims, type Claims, type Determinism, type Task } from "./schemas.ts";
 import { git, runProcess, sha256File, stableJson, toPosix, utcNow } from "./util.ts";
 
@@ -77,6 +80,8 @@ export interface CollectOptions {
   notExecuted?: { status: "failed" | "timeout" | "cancelled"; reason: string };
   /** Set to false for a comparison execution that should leave no report behind. */
   writeArtifact?: boolean;
+  /** Paths the experiment must not be able to read. Default: the runtime's key directory. */
+  hidden?: string[];
 }
 export interface CollectResult {
   artifact: Artifact;
@@ -84,6 +89,8 @@ export interface CollectResult {
   detail: string | null;
   /** Things a human reviewer should look at. Not evidence and not part of the verdict. */
   review_notes: string[];
+  /** How the experiment's process was confined. Null when it was not executed. */
+  isolation: IsolationRecord | null;
 }
 
 function scrubbedEnv(): NodeJS.ProcessEnv {
@@ -201,15 +208,30 @@ export async function collect(options: CollectOptions): Promise<CollectResult> {
   let stderrTail = "";
   const notExecuted = options.notExecuted ?? (problems.length > 0 ? { status: "failed" as const, reason: `producer interface not met: ${problems.join("; ")}` } : undefined);
   let failure: string | undefined = notExecuted?.reason;
+  let isolation: IsolationRecord | null = null;
+  const reservedWritten: string[] = [];
   const started_at = utcNow();
   if (notExecuted) {
     execution = { command: EXECUTION_COMMAND, status: notExecuted.status, exit_code: null, started_at, runtime_seconds: 0, provenance: "collector" };
   } else {
     const stderrPath = join(recordDir, "execution.stderr.txt");
-    const done = await runProcess("uv", ["run", "--locked", "--project", repoRoot, "python", "experiment.py", "--config", "config.json", "--out", outDir], {
+    // The experiment writes into an empty directory of its own, in a sandbox where the workspace is read-only,
+    // there is no network, and nothing of the run directory or the runtime's key is visible. Its files are
+    // moved into outDir afterwards.
+    const execDir = mkdtempSync(join(tmpdir(), "tenric-exec-"));
+    const wrapped = sandboxed(["uv", "run", "--locked", "--project", repoRoot, "python", "experiment.py", "--config", "config.json", "--out", execDir], {
+      readonly: [...pythonPaths(repoRoot), workspace], writable: [execDir], cwd: workspace, network: false, hidden: options.hidden ?? [keyDir()],
+    });
+    isolation = wrapped.isolation;
+    const done = await runProcess(wrapped.command, wrapped.args, {
       cwd: workspace, env: scrubbedEnv(), timeoutSeconds: options.executionTimeoutSeconds, signal: options.signal,
       stdoutPath: join(recordDir, "execution.stdout.txt"), stderrPath,
     });
+    for (const name of readdirSync(execDir)) {
+      if (name === "tenric" || name === "workspace") reservedWritten.push(name);
+      else cpSync(join(execDir, name), join(outDir, name), { recursive: true, verbatimSymlinks: true });
+    }
+    rmSync(execDir, { recursive: true, force: true });
     stderrTail = existsSync(stderrPath) ? readFileSync(stderrPath, "utf8").slice(-2000) : "";
     const status = done.outcome === "timeout" ? "timeout" : done.outcome === "cancelled" ? "cancelled" : done.outcome === "exited" && done.exitCode === 0 ? "succeeded" : "failed";
     if (status === "timeout") failure = `experiment exceeded ${options.executionTimeoutSeconds} s and was killed`;
@@ -267,6 +289,7 @@ export async function collect(options: CollectOptions): Promise<CollectResult> {
   if (execution.status === "succeeded" && claims) {
     if (symlinks.length > 0) late.push(`outputs must be regular files, found symlinks: ${symlinks.join(", ")}`);
     for (const name of ["artifact.json", "report.md"]) if (existsSync(join(outDir, name))) late.push(`the experiment wrote ${name}, which only the runtime may write`);
+    for (const name of reservedWritten) late.push(`the experiment wrote ${name}/, a name reserved for the runtime; it was not kept`);
     let produced: unknown;
     if (!present.has("metrics.json")) late.push("the experiment wrote no metrics.json");
     else {
@@ -359,7 +382,7 @@ export async function collect(options: CollectOptions): Promise<CollectResult> {
     }
     writeFileSync(join(outDir, "artifact.json"), stableJson(artifact));
   }
-  return { artifact, status: execution.status, detail: failure ?? null, review_notes };
+  return { artifact, status: execution.status, detail: failure ?? null, review_notes, isolation };
 }
 
 /** Directory of this file, for callers that need to name the runtime in a command. */
