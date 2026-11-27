@@ -77,6 +77,14 @@ describe("compiler", () => {
     expect(plan.requirements.find((r) => r.id === "R-011")!.supplied_by).toBe("producer");
     expect(plan.warnings).toEqual([]);
     expect(plan.instructions).toContain("Declare at least 1 metric(s) and at least 1 finding(s)");
+    expect(plan.instructions).toContain("this contract makes no exception");
+  });
+
+  it("turns the contract's tolerance rules into what the producer is told about metric names", () => {
+    const { plan } = compile({ taskPath: taskFile((t) => { t.contract.version = "0.3.0"; t.data_class = "measured"; t.title = "Coin flips"; }), backend: agent });
+    expect(plan.instructions).toContain("a metric whose name matches `*_seconds` may differ by up to 0.5 times the larger of the two values");
+    expect(plan.instructions).not.toContain("this contract makes no exception");
+    expect(plan.predicted).toMatchObject({ best_verdict: "accepted", known_failures: [] });
   });
 
   it("derives the producer's instructions from the partition and never asks it for evidence", () => {
