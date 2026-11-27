@@ -238,6 +238,28 @@ describe("failures are recorded, never dropped, and never accepted", () => {
   }, LONG);
 });
 
+describe("the experiment's environment", () => {
+  it("is an allowlist plus pinned variables: nothing else from the caller reaches the experiment", async () => {
+    // A host-wide MATPLOTLIBRC once changed the figures of the first execution and not of the verifier's re-execution.
+    const leaked = { MATPLOTLIBRC: "/nonexistent/matplotlibrc", TENRIC_TEST_LEAK: "1", PYTHONPATH: "/nonexistent" };
+    const before = Object.fromEntries(Object.keys(leaked).map((name) => [name, process.env[name]]));
+    Object.assign(process.env, leaked);
+    try {
+      const outcome = await run(producer((dir) => experiment(dir, PREAMBLE +
+        `import os\nfound = sorted(k for k in ("MATPLOTLIBRC", "TENRIC_TEST_LEAK", "PYTHONPATH") if k in os.environ)\n` +
+        `if found or os.environ.get("PYTHONHASHSEED") != "0": sys.exit("leaked: " + ",".join(found))\ndeliver()\n`)));
+      expect(outcome.artifact.failure?.stderr_tail ?? "").toBe("");
+      expect(outcome.run.status).toBe("completed");
+      expect(outcome.results["R-008"]).toBe("pass");
+    } finally {
+      for (const [name, value] of Object.entries(before)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  }, LONG);
+});
+
 describe("determinism is observed, not taken on trust", () => {
   it("an output that changes between executions while declared byte-identical is reported by the runtime and rejected by the verifier", async () => {
     const outcome = await run(producer((dir) => experiment(dir, PREAMBLE + "deliver(heads=time.time() % 1)\n")));

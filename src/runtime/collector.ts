@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { scrubbedEnvironment } from "../reproduce.ts";
 import { renderReport } from "./report.ts";
 import { validateClaims, type Claims, type Determinism, type Task } from "./schemas.ts";
 import { git, runProcess, sha256File, stableJson, toPosix, utcNow } from "./util.ts";
@@ -86,9 +87,10 @@ export interface CollectResult {
 }
 
 function scrubbedEnv(): NodeJS.ProcessEnv {
-  // Python reads PYTHON* variables from its environment; none of the caller's may leak into the experiment.
-  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith("PYTHON")));
-  return { ...env, ...PINNED_ENV };
+  // The same allowlist the verifier's re-execution uses (src/reproduce.ts), so the execution for the record and
+  // the re-execution see the same environment. Passing the caller's environment through let a host-wide
+  // MATPLOTLIBRC change the figures of the first execution only; the verifier's re-execution caught that.
+  return { ...scrubbedEnvironment(), ...PINNED_ENV };
 }
 
 function resolvePointer(document: unknown, pointer: string): unknown {
