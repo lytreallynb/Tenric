@@ -78,7 +78,7 @@ jobs:
         run: uv sync --locked && uv run --locked python experiments/baseline/run_baseline.py --out "$RUNNER_TEMP/run"
       - name: Judge it with the base branch's verifier, contract and task file
         working-directory: trusted
-        # Contract 0.2.0: CI holds no collector key, so 0.4.0 (R-012) cannot pass here by design (Q21).
+        # Contract 0.2.0: CI holds no collector key, so 0.4.0 (R-012) cannot pass here by design (Q26).
         run: |
           set +e
           node src/cli.ts verify "$RUNNER_TEMP/run" \
