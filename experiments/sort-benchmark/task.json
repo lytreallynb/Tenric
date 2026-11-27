@@ -1,0 +1,16 @@
+{
+  "collect": [
+    "uv",
+    "run",
+    "--locked",
+    "python",
+    "experiments/sort-benchmark/run_conventional.py",
+    "--config",
+    "{config}",
+    "--out",
+    "{out}"
+  ],
+  "experiment_id": "sort-benchmark",
+  "task_schema": "0.1.0",
+  "timeout_seconds": 900
+}

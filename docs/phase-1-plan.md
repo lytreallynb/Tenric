@@ -49,6 +49,8 @@ Done differently from the sketch above: there is no separate `reproduce` command
 - 1E: collector moved into the TypeScript runtime with a subprocess adapter.
 - 1F: first real backend adapter, in a sandbox, behind a spending limit. First point at which paid model usage is needed.
 
+State on 2026-11-27: the owner approved going ahead. 1E and 1F are implemented and tested (`docs/reports/runtime-report.md`), with one departure from the wording above: the agent backend has a spending limit and **no sandbox** (ADR-0009, ADR-0010). The contract compiler listed below as out of scope was built under the same approval.
+
 ## Explicitly not in Phase 1
 
 Contract compiler beyond hard-coded planning, a second artifact type, Controlled Evolution, any UI, any database, multi-agent orchestration, an LLM judge.

@@ -68,12 +68,14 @@ instructions / skill       output schema   validator plan
 | Acceptance semantics | Results to verdict | **Implemented** as a pure function with tests (section 7) |
 | Collector | Observes a run from outside the producer | **Implemented** only as the Python baseline script, which is conventional tooling and not the Tenric runtime |
 | Verifier | Runs validators, computes the verdict | **Implemented** for the seven machine-checkable requirements of the first contract, with a command line (`src/cli.ts`). Re-execution and human review are **Specified**. |
-| Contract Compiler | Section 4 | **Hypothesis** |
-| Backend Adapter | Section 8 | **Hypothesis** |
-| Execution Runtime | Lifecycle, timeouts, event log | **Hypothesis** |
+| Contract Compiler | Section 4 | **Implemented** in `src/runtime/compiler.ts` with tests, except schema lowering (item 3), which is not built. Whether it earns its place is discussed in `docs/reports/runtime-report.md`. |
+| Backend Adapter | Section 8 | **Implemented** in `src/runtime/backends.ts`: a script backend and Claude Code in headless mode, exercised by real runs. One agent harness only (ADR-0010). |
+| Execution Runtime | Lifecycle, timeouts, cancellation, event log, integrity checks, collection | **Implemented** in `src/runtime/runtime.ts` and `src/runtime/collector.ts` with tests (ADR-0009). Detects tampering; does not sandbox. |
 | Controlled Evolution | Proposing and regression-testing contract changes | Out of scope. Not designed here. |
 
-## 4. What the compiler must do that is not prompt concatenation (Hypothesis)
+## 4. What the compiler must do that is not prompt concatenation (Implemented in part)
+
+State on 2026-11-27: items 1, 2, 4 and 5 are implemented in `src/runtime/compiler.ts`; item 3 is not. The text below is the original hypothesis, kept as written.
 
 If the compiler only pastes requirements into a prompt, it should not exist. Deterministic work that appears to be real:
 
@@ -178,7 +180,9 @@ Rules:
 
 Collapsing `inconclusive` into `rejected` would be simpler and equally fail-closed. They are kept apart because they call for different actions: `rejected` means fix the deliverable, `inconclusive` means finish the verification. The real baseline run is the example: verified without a re-execution, nothing is known to be wrong with it, one mandatory requirement (R-008) was not run, and its verdict is `inconclusive`. Reporting that as `rejected` would be as misleading as reporting it `accepted`.
 
-## 8. Backend adapter (Hypothesis)
+## 8. Backend adapter (Implemented for two backends)
+
+State on 2026-11-27: the interface is `describe()` and `run()`; cancellation is an abort signal passed to `run()`. See ADR-0010. The text below is the original hypothesis, kept as written.
 
 The minimal interface under consideration:
 

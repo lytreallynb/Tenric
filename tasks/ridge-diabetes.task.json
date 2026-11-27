@@ -1,0 +1,7 @@
+{
+  "runtime_task_schema": "0.1.0",
+  "id": "ridge-diabetes",
+  "title": "Effect of ridge regularisation strength on the scikit-learn diabetes dataset",
+  "contract": { "id": "research.experiment-report", "version": "0.4.0" },
+  "brief": "Study how the regularisation strength of ridge regression affects held-out error on the diabetes dataset bundled with scikit-learn (sklearn.datasets.load_diabetes). Hold out 25% of the rows as a test split using the seed. Standardise the features on the training split. Fit ridge regression for alpha in a logarithmic grid from 0.001 to 1000 (at least 13 values), and for each alpha estimate the error by 5-fold cross-validation on the training split. Report the alpha chosen by cross-validation, the test R-squared and test RMSE at that alpha, and the test R-squared of ordinary least squares as a reference. Produce one figure: cross-validated RMSE against alpha."
+}

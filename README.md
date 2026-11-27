@@ -36,6 +36,18 @@ It prints the contract's SHA-256, the artifact's SHA-256, the verifier's revisio
 - Every verdict says whether a collector the operator trusts signed the run (`; collector not attested` otherwise). Contract 0.4.0 requires that signature (R-012). Trusted collectors are listed in `spec/collectors/registry.json`, which is empty, or in the file given with `--collectors`. `node src/cli.ts collector-key` makes a key and its entry; `node src/cli.ts attest` signs a run. See ADR-0011.
 - `accepted` means the listed requirements passed. It is not a statement that the findings are true, and the trust boundary has known gaps: read `docs/trust-model.md` before relying on a verdict.
 
+## Running a task under a contract
+
+```sh
+node src/tenric.ts backends                                   # what each backend guarantees
+node src/tenric.ts compile --task tasks/digits-logreg.task.json --backend claude-code
+node src/tenric.ts run --task tasks/digits-logreg.task.json --backend script
+node src/tenric.ts run --task tasks/digits-logreg.task.json --backend claude-code [--model <id>]
+node src/tenric.ts runs
+```
+
+`run` compiles the task against its contract, lets the backend write an experiment in a workspace, executes that experiment itself, assembles the artifact from what it observed and has the verifier judge it with a re-execution. The backend never writes the artifact. Exit codes are those of `verify`. The `claude-code` backend needs the Claude Code CLI installed and signed in, takes a few minutes and spends model usage; it runs code an agent wrote on your machine **without a sandbox** (ADR-0009). File layout and commands: [docs/runtime-interface.md](docs/runtime-interface.md). What real runs showed: [docs/reports/runtime-report.md](docs/reports/runtime-report.md).
+
 ## What is here
 
 | Path | Content |
@@ -49,6 +61,10 @@ It prints the contract's SHA-256, the artifact's SHA-256, the verifier's revisio
 | `docs/adr/` | Architecture decision records |
 | `spec/` | Contract schema, research Artifact IR schema, contracts 0.1.0 to 0.4.0, the contract registry, the (empty) list of trusted collectors |
 | `experiments/baseline/` | CPU-only experiment and a conventional collector, in Python |
+| `src/runtime/`, `src/tenric.ts` | Contract compiler, execution runtime, collector, backend adapters, command line |
+| `tasks/`, `spec/runtime/` | Task files; schemas for tasks and for what a producer may claim |
+| `experiments/sort-benchmark/` | The second experiment, with both a runtime producer and a conventional collector |
+| `evaluation/group-b/` | Runner for the comparison group that gets the standard as instructions only |
 | `src/`, `tests/` | Validators, re-execution, the verdict record, the `verify` command line, verdict semantics as executable specification, tests |
 | `fixtures/` | Hand-written demonstration data, labelled as such |
 

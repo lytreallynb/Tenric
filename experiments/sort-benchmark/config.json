@@ -1,0 +1,8 @@
+{
+  "experiment_id": "sort-benchmark",
+  "title": "Runtime of a pure-Python merge sort against the built-in sort",
+  "seed": 20261127,
+  "sizes": [1000, 10000, 100000],
+  "max_value": 1000000,
+  "repetitions": 7
+}

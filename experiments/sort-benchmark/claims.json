@@ -1,0 +1,41 @@
+{
+  "claims_schema": "0.1.0",
+  "dataset": {
+    "name": "seeded-random-integers",
+    "version": "generated from the seed in config.json",
+    "description": "Three lists of pseudo-random integers (1,000, 10,000 and 100,000 elements) drawn with Python's random.Random.",
+    "file": "output:data/inputs.json"
+  },
+  "metrics": [
+    { "name": "results_agree", "json_pointer": "/results_agree" },
+    { "name": "builtin_seconds", "json_pointer": "/at_largest_size/builtin_seconds", "unit": "s" },
+    { "name": "merge_sort_seconds", "json_pointer": "/at_largest_size/merge_sort_seconds", "unit": "s" },
+    { "name": "largest_size", "json_pointer": "/largest_size", "unit": "elements" }
+  ],
+  "figures": [
+    { "id": "time-vs-size", "spec_output": "figures/time_vs_size.spec.json", "image_output": "figures/time_vs_size.png", "renderer": "matplotlib" }
+  ],
+  "outputs": [
+    { "path": "data/inputs.json", "role": "data", "determinism": "byte-identical" },
+    { "path": "metrics.json", "determinism": "volatile" },
+    { "path": "figures/time_vs_size.spec.json", "determinism": "volatile" },
+    { "path": "figures/time_vs_size.png", "determinism": "volatile" }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "statement": "On {{metric:largest_size}} random integers the pure-Python merge sort took {{metric:merge_sort_seconds:4}} s and the built-in sorted() {{metric:builtin_seconds:4}} s (medians of 7 repetitions).",
+      "supported_by": ["metric:merge_sort_seconds", "metric:builtin_seconds", "figure:time-vs-size"]
+    },
+    {
+      "id": "F2",
+      "statement": "Both algorithms returned the same result on every input (results_agree = {{metric:results_agree}}).",
+      "supported_by": ["metric:results_agree", "output:data/inputs.json"]
+    }
+  ],
+  "limitations": [
+    "Wall-clock timings on one machine under whatever load it had; they differ between executions and are declared volatile. The ratio of the two times is in metrics.json but is not a declared metric, because the contract compares only durations with a tolerance.",
+    "One input distribution (uniform random integers) and three sizes: nothing is shown about sorted, reversed or duplicate-heavy inputs.",
+    "The merge sort is a plain textbook version, not a tuned one; the ratio says little about what pure Python could reach."
+  ]
+}
