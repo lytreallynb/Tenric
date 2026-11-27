@@ -285,7 +285,48 @@ What the tests show about the boundary (`tests/runtime/sandbox.test.ts`, 12 test
 
 ### 10.2 `npm run verify`
 
-<<VERIFY2>>
+Linux x86_64, clean checkout at `9214d5b`. Output unedited except that a repeated uv deprecation warning, blank lines and the per-file test lines are removed. The 12 sandbox tests ran; none was skipped:
+
+```
+== tenric verify
+revision: 9214d5b2c138ff7ce7070875b0a8433c9c27d636
+node v22.23.5, Python 3.13.14, Linux x86_64
+== 1/4 typecheck
+== 2/4 baseline experiment, executed twice, then once with a broken config and once with a timeout it cannot meet
+succeeded: wrote /home/claude/tenric-runs/runs/verify-a/artifact.json
+succeeded: wrote /home/claude/tenric-runs/runs/verify-b/artifact.json
+76111195e5f8432aef457bba6b858ab7434b98ab623c444956a85b8d213faf53  runs/verify-a/metrics.json
+76111195e5f8432aef457bba6b858ab7434b98ab623c444956a85b8d213faf53  runs/verify-b/metrics.json
+3b005111cc142de6c3987a5ad13cb09b1fa907828e4ae249143006271724ff1e  runs/verify-a/figures/confusion_matrix.png
+3b005111cc142de6c3987a5ad13cb09b1fa907828e4ae249143006271724ff1e  runs/verify-b/figures/confusion_matrix.png
+failed: wrote /home/claude/tenric-runs/runs/verify-fail/artifact.json
+timeout: wrote /home/claude/tenric-runs/runs/verify-timeout/artifact.json
+== 3/4 tests
+ Test Files  11 passed (11)
+      Tests  206 passed (206)
+== 4/4 verdict for the baseline run, with re-execution
+contract: research.experiment-report version 0.2.0 sha256 6f1d9eafe02d17746ed3e106722fe2ae0a7c1a010f074f688eb5ee3003651e11 (matches the registry)
+artifact: runs/verify-a/artifact.json sha256 b2b47d3e77f47e36e50a5376fb90d0c26b95d3efc12c10bc4d8aee7f60620827
+verifier: revision 9214d5b2c138ff7ce7070875b0a8433c9c27d636
+R-001  pass     Artifact conforms to the IR schema (mandatory, machine)
+R-002  pass     Every listed output exists and matches its recorded size and SHA-256 (mandatory, machine)
+R-003  pass     Every reported metric equals the value at its pointer in a hashed output (mandatory, machine)
+R-004  pass     Source, environment, dataset, config, execution and output digests are marked as recorded by the collector (mandatory, machine)
+R-005  pass     Execution completed successfully (mandatory, machine)
+R-006  pass     Source is pinned to a clean revision or a hashed snapshot (mandatory, machine)
+R-007  pass     Every finding references metrics, figures or outputs that exist in the artifact (mandatory, machine)
+R-008  pass     A re-execution reproduces the metrics (mandatory, empirical)
+       re-executed revision 9214d5b2c138ff7ce7070875b0a8433c9c27d636 in an equal environment: 3 metrics equal, 3 outputs byte-identical
+R-009  not_run  Findings and limitations are justified by the evidence (advisory, human)
+       no validator for human-review yet
+R-010  pass     The artifact is a measurement and contains metrics, a report and at least one finding (mandatory, machine)
+R-011  pass     Names are unique and every figure points at listed outputs (mandatory, machine)
+collector: not attested (no collector attestation at tenric/attestation.json: nothing shows who collected this evidence)
+note: the contract requires capabilities that are not established for this run: independent-collector, content-hashing
+verdict: accepted under contract research.experiment-report version 0.2.0: 10 of 10 mandatory requirements passed (9 machine, 1 empirical, 0 human); collector not attested
+== verify: OK
+exit 0
+```
 
 ### 10.3 The rerun
 
