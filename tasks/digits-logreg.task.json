@@ -2,7 +2,7 @@
   "runtime_task_schema": "0.1.0",
   "id": "digits-logreg",
   "title": "Logistic regression on the scikit-learn digits dataset",
-  "contract": { "id": "research.experiment-report", "version": "0.2.0" },
+  "contract": { "id": "research.experiment-report", "version": "0.4.0" },
   "brief": "Train a multinomial logistic-regression classifier on the handwritten digits dataset bundled with scikit-learn (sklearn.datasets.load_digits; its data file inside the package is sklearn/datasets/data/digits.csv.gz). Standardise the features, hold out a stratified 25% test split using the seed, and report test accuracy and macro-averaged F1. Also report the accuracy of a most-frequent-class reference on the same split, so the result has something to be compared with. Produce one figure: the confusion matrix on the test split.",
   "script_producer": "experiments/baseline"
 }

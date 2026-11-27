@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { REPO_ROOT } from "../../src/spec.ts";
 import { PreconditionError, verify } from "../../src/verify.ts";
-import { keyDir } from "../../src/runtime/keys.ts";
+import { keyDir, loadOrCreateIdentity } from "../../src/runtime/keys.ts";
 import { ClaudeCodeBackend } from "../../src/runtime/backends.ts";
 import type { Task } from "../../src/runtime/schemas.ts";
 import { git, readJson, toPosix, utcNow, writeJson } from "../../src/runtime/util.ts";
@@ -60,7 +60,8 @@ const runDir = join(workspace, "run");
 if (!existsSync(join(runDir, "artifact.json"))) no_verdict = "the agent delivered no run/artifact.json";
 else {
   try {
-    record = verify({ runDir, contractPath: REPO_ROOT + contractPath, repo: workspace, reproduce: { taskPath: reproduceTask } });
+    // Judged with the runtime's key trusted, exactly as a runtime run on this machine is. The agent never had that key.
+    record = verify({ runDir, contractPath: REPO_ROOT + contractPath, repo: workspace, reproduce: { taskPath: reproduceTask }, collectorsPath: loadOrCreateIdentity().collectors_path });
   } catch (error) {
     if (!(error instanceof PreconditionError)) throw error;
     no_verdict = error.message;
@@ -68,7 +69,7 @@ else {
 }
 writeJson(join(out, "record", "group-b.json"), {
   group: "B", task: task.id, contract: { id: task.contract.id, version: task.contract.version }, started_at, finished_at: utcNow(),
-  backend: { name: "claude-code", outcome: backend.outcome, seconds: backend.seconds, detail: backend.detail ?? null, self_report: backend.self_report },
+  backend: { name: "claude-code", outcome: backend.outcome, seconds: backend.seconds, isolation: backend.isolation, detail: backend.detail ?? null, self_report: backend.self_report },
   no_verdict, verification: record,
 });
 const verdict = (record as { statement?: string } | null)?.statement;
