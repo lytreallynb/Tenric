@@ -4,7 +4,6 @@
 // by the runtime, and self_report is the backend's account of itself.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, join, sep } from "node:path";
 import { certificatePaths, pythonPaths, sandboxAvailability, sandboxed, type IsolationRecord } from "./sandbox.ts";
 import type { Task } from "./schemas.ts";
@@ -124,8 +123,10 @@ export class ClaudeCodeBackend implements Backend {
   readonlyPaths(): string[] {
     const [executable, ...leading] = this.command;
     const paths = [installRoot(executable!), ...leading.filter((a) => isAbsolute(a) && existsSync(a)), ...certificatePaths()];
-    const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
-    if (existsSync(configDir)) paths.push(configDir);
+    // The CLI starts with an empty home directory inside the sandbox. Configuration it must see is the operator's
+    // choice: CLAUDE_CONFIG_DIR when set, and anything listed in TENRIC_SANDBOX_READONLY.
+    const configDir = process.env.CLAUDE_CONFIG_DIR;
+    if (configDir && existsSync(configDir)) paths.push(configDir);
     for (const extra of (process.env.TENRIC_SANDBOX_READONLY ?? "").split(":")) if (extra && isAbsolute(extra)) paths.push(extra);
     return [...new Set(paths.filter((p): p is string => !!p))];
   }
@@ -200,11 +201,13 @@ export class ClaudeCodeBackend implements Backend {
     };
 
     // Inside the sandbox a missing executable would surface as an exit code; find it here so the failure says what it is.
-    if (!installRoot(executable!)) {
+    // The sandbox mounts the real installation, not the symbolic link on PATH that may point at it.
+    const resolved = resolveExecutable(executable!);
+    if (!resolved) {
       writeJson(join(request.recordDir, "result.json"), { process: null, error: "not found" });
       return { outcome: "failed", exit_code: null, seconds: 0, detail: `could not start ${executable}: not found`, self_report: {}, isolation: null };
     }
-    const wrapped = sandboxed([executable!, ...args], {
+    const wrapped = sandboxed([resolved, ...args], {
       readonly: [...this.readonlyPaths(), ...pythonPaths(request.repoRoot)],
       writable: [request.workspace], cwd: request.workspace, network: true, hidden: request.hidden,
     });
@@ -212,9 +215,7 @@ export class ClaudeCodeBackend implements Backend {
       writeJson(join(request.recordDir, "result.json"), { process: null, refused: wrapped.isolation.detail });
       return { outcome: "failed", exit_code: null, seconds: 0, detail: `refused to run without a sandbox (${wrapped.isolation.detail})`, self_report: {}, isolation: wrapped.isolation };
     }
-    const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
     const done = await runProcess(wrapped.command, wrapped.args, {
-      env: { ...process.env, CLAUDE_CONFIG_DIR: configDir },
       cwd: request.workspace,
       timeoutSeconds: request.limits.timeoutSeconds,
       signal: request.signal,
@@ -252,13 +253,20 @@ export class ClaudeCodeBackend implements Backend {
 }
 
 /** The installation directory of an executable on PATH or given by path: its real location, two levels up from the binary. */
-function installRoot(executable: string): string | undefined {
+/** The real path of an executable given by name or path, after following symbolic links. */
+function resolveExecutable(executable: string): string | undefined {
   try {
     const found = isAbsolute(executable) ? executable : execFileSync("sh", ["-c", 'command -v "$1"', "sh", executable], { encoding: "utf8" }).trim();
-    return found && existsSync(found) ? dirname(dirname(realpathSync(found))) : undefined;
+    return found && existsSync(found) ? realpathSync(found) : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** The installation directory of an executable: two levels up from its real binary. */
+function installRoot(executable: string): string | undefined {
+  const found = resolveExecutable(executable);
+  return found ? dirname(dirname(found)) : undefined;
 }
 
 const registry: Record<string, () => Backend> = {
