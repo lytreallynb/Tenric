@@ -1,0 +1,24 @@
+{
+  "claims_schema": "0.1.0",
+  "dataset": {
+    "name": "fixture-coin-flips",
+    "version": "generated from the seed in config.json",
+    "description": "DEMONSTRATION FIXTURE: simulated coin flips, written by the experiment itself.",
+    "file": "output:data/flips.csv"
+  },
+  "metrics": [
+    { "name": "heads_fraction", "json_pointer": "/heads_fraction" },
+    { "name": "n_flips", "json_pointer": "/n_flips", "unit": "flips" }
+  ],
+  "outputs": [
+    { "path": "data/flips.csv", "role": "data", "determinism": "byte-identical" }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "statement": "Fixture statement: {{metric:heads_fraction:3}} of {{metric:n_flips}} simulated flips came up heads.",
+      "supported_by": ["metric:heads_fraction", "metric:n_flips", "output:data/flips.csv"]
+    }
+  ],
+  "limitations": ["This is a test fixture and carries no experimental meaning."]
+}
