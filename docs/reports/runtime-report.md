@@ -386,7 +386,7 @@ R-012  pass     A collector the verifier's operator trusts signed a record of th
 verdict: accepted under contract research.experiment-report version 0.4.0: 11 of 11 mandatory requirements passed (10 machine, 1 empirical, 0 human); evidence collected by tenric-runtime@vm#6b428f2e6596 (attested)
 ```
 
-The verdict says the evidence was collected by the runtime. It was not. The operator broke the key's stated custody ("signs only runs whose backend and experiment ran in an enforced sandbox"), and nothing can detect that. So R-012 is exactly as trustworthy as the person holding the key and the custody they promise. Against an agent that never sees the key, it holds; against the operator, it is a promise.
+The verdict says the evidence was collected by the runtime. It was not. (After this was reported, the verification branch changed the wording at `ae4dd2f` to `; signed with the key of trusted collector <id>`, which says only what is checked. The output above is quoted as it was printed at `a3c62c5`.) The operator broke the key's stated custody ("signs only runs whose backend and experiment ran in an enforced sandbox"), and nothing can detect that. So R-012 is exactly as trustworthy as the person holding the key and the custody they promise. Against an agent that never sees the key, it holds; against the operator, it is a promise.
 
 The same experiment also shows the other side: a conventional collector can meet contract 0.4.0 with a key of its own and an honest custody statement. R-012 does not require the runtime; it requires a trusted signer.
 
