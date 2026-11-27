@@ -60,6 +60,31 @@ function duplicates(values: string[]): string[] {
   return [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
 }
 
+interface MetricRule { pattern: string; abs_tolerance?: number; rel_tolerance?: number }
+
+/** Opt-in tolerances for named metrics, declared in the contract. A metric no rule matches is compared exactly. */
+function metricRules(params: Record<string, unknown>): MetricRule[] {
+  const rules = params.metric_rules;
+  if (rules === undefined) return [];
+  const usable = Array.isArray(rules) && rules.every((rule) => {
+    if (rule === null || typeof rule !== "object") return false;
+    const { pattern, abs_tolerance, rel_tolerance, ...unknown } = rule as Record<string, unknown>;
+    const bound = (value: unknown) => typeof value === "number" && value >= 0 && Number.isFinite(value);
+    return typeof pattern === "string" && pattern.length > 0 && Object.keys(unknown).length === 0 &&
+      (abs_tolerance === undefined) !== (rel_tolerance === undefined) && bound(abs_tolerance ?? rel_tolerance);
+  });
+  if (!usable) throw new Error("contract gives unusable metric_rules: each needs a pattern and exactly one of abs_tolerance, rel_tolerance");
+  return rules as MetricRule[];
+}
+function matches(pattern: string, name: string): boolean {
+  const escaped = pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  return new RegExp(`^${escaped}$`).test(name);
+}
+function within(rule: MetricRule, a: number, b: number): boolean {
+  const difference = Math.abs(a - b);
+  return rule.abs_tolerance !== undefined ? difference <= rule.abs_tolerance : difference <= rule.rel_tolerance! * Math.max(Math.abs(a), Math.abs(b));
+}
+
 function sourcePinnedProblems({ source }: Artifact, repo: string): string[] {
   if (source.kind === "none") return ["source is not pinned to anything"];
   // IR 0.1.0 records a snapshot digest but not where the snapshot is, so it cannot be re-hashed.
@@ -169,6 +194,7 @@ const implemented: Record<string, Check> = {
   "numeric-reproduction": (artifact, { dir, repo, params, reproduce }) => {
     const tolerance = params.cross_platform_abs_tolerance;
     if (typeof tolerance !== "number" || !(tolerance >= 0)) throw new Error("contract gives no cross_platform_abs_tolerance");
+    const rules = metricRules(params);
     if (params.same_environment !== "byte-identical") throw new Error(`unsupported same_environment rule ${JSON.stringify(params.same_environment)}`);
     // Dependent validators do not guess (RFC-0001 section 7.2 rule 7): there is nothing to repeat
     // unless the run succeeded and names the source it ran from.
@@ -196,6 +222,7 @@ const implemented: Record<string, Check> = {
     const sameEnvironment = environment(artifact) === environment(redone);
     const problems: string[] = [];
 
+    const tolerated: string[] = [];
     const reported = new Map(artifact.metrics.map((m) => [m.name, m.value]));
     const reproduced = new Map(redone.metrics.map((m) => [m.name, m.value]));
     for (const name of new Set([...reported.keys(), ...reproduced.keys()])) {
@@ -203,8 +230,14 @@ const implemented: Record<string, Check> = {
       const b = reproduced.get(name);
       if (a === undefined) problems.push(`metric ${name}: produced by the re-execution, missing from the artifact`);
       else if (b === undefined) problems.push(`metric ${name}: reported by the artifact, not produced by the re-execution`);
-      else if (sameEnvironment ? a !== b : !(Math.abs(a - b) <= tolerance)) {
-        problems.push(`metric ${name}: artifact reports ${a}, re-execution gives ${b}` + (sameEnvironment ? "" : ` (tolerance ${tolerance})`));
+      else {
+        const rule = rules.find((r) => matches(r.pattern, name));
+        if (rule) {
+          tolerated.push(name);
+          if (!within(rule, a, b)) problems.push(`metric ${name}: artifact reports ${a}, re-execution gives ${b} (contract rule ${JSON.stringify(rule)})`);
+        } else if (sameEnvironment ? a !== b : !(Math.abs(a - b) <= tolerance)) {
+          problems.push(`metric ${name}: artifact reports ${a}, re-execution gives ${b}` + (sameEnvironment ? "" : ` (tolerance ${tolerance})`));
+        }
       }
     }
 
@@ -225,7 +258,8 @@ const implemented: Record<string, Check> = {
       ? `re-executed revision ${artifact.source.revision} in an equal environment: ${reported.size} metrics equal, ${compared} outputs byte-identical`
       : `re-executed revision ${artifact.source.revision} in a different environment (${redone.environment.os} ${redone.environment.arch}, Python ${redone.environment.python}): ` +
         `${reported.size} metrics within ${tolerance}; byte identity not compared`;
-    return { problems, note };
+    const byRule = tolerated.length > 0 ? `; compared within a contract tolerance instead of exactly: ${tolerated.sort().join(", ")}` : "";
+    return { problems, note: note + byRule };
   },
 };
 
