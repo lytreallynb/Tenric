@@ -3,8 +3,8 @@
 // is verified by the repository's verifier. The producers are fixtures and the
 // runs are labelled data_class "fixture": none of this is a result.
 import { beforeAll, describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { REPO_ROOT, validateArtifact } from "../../src/spec.ts";
@@ -134,6 +134,20 @@ describe("a run with a well-behaved producer", () => {
     expect(readFileSync(join(good.dir, "workspace/TASK.md"), "utf8")).toContain("# Task: DEMONSTRATION FIXTURE");
     expect((readJson(join(good.dir, "tenric/reproduce.task.json")) as any).collect.slice(-7)).toEqual(["collect", "--workspace", ".", "--config", "{config}", "--out", "{out}"]);
   });
+
+  it("is re-executed correctly when the workspace is reached through a symlink and git would rewrite line endings", () => {
+    // What macOS (temporary directory behind a symlink) and Windows (core.autocrlf) do to the verifier's re-execution.
+    const link = join(scratch("tenric-link-"), "ws");
+    symlinkSync(join(good.dir, "workspace"), link, "junction");
+    const out = join(scratch("tenric-collect-"), "out");
+    const done = spawnSync(process.execPath, [REPO_ROOT + "src/tenric.ts", "collect", "--workspace", ".", "--config", join(link, "config.json"), "--out", out], { cwd: link, encoding: "utf8" });
+    expect(done.status, done.stderr).toBe(0);
+    expect(readFileSync(join(good.dir, "workspace/.gitattributes"), "utf8")).toBe("* -text\n");
+    const checkout = join(scratch("tenric-crlf-"), "wt");
+    execFileSync("git", ["-c", "core.autocrlf=true", "-C", join(good.dir, "workspace"), "worktree", "add", "--quiet", "--detach", checkout, good.artifact.source.revision]);
+    expect(sha256File(join(checkout, "config.json"))).toBe(good.artifact.config.sha256);
+    execFileSync("git", ["-C", join(good.dir, "workspace"), "worktree", "remove", "--force", checkout]);
+  }, LONG);
 
   it("can be collected again from the workspace alone with tenric collect", () => {
     const out = join(scratch("tenric-collect-"), "out");

@@ -10,7 +10,7 @@
 //
 // Exit codes for run, as for verify: 0 accepted, 1 rejected, 3 inconclusive,
 // 2 no verdict issued (bad usage, a precondition failure, or a void run).
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { REPO_ROOT } from "./spec.ts";
@@ -108,7 +108,9 @@ if (command === "verify") {
   } else if (command === "collect") {
     if (!values.workspace || !values.out) nothingRan(USAGE);
     const workspace = resolve(values.workspace);
-    if (values.config && resolve(values.config) !== join(workspace, "config.json")) nothingRan("--config must be config.json of the workspace");
+    // Compared as real paths: the caller may name the same file through a symlinked temporary directory (macOS does).
+    const same = (a: string, b: string) => existsSync(a) && existsSync(b) && realpathSync(a) === realpathSync(b);
+    if (values.config && !same(values.config, join(workspace, "config.json"))) nothingRan("--config must be config.json of the workspace");
     const taskFile = join(workspace, "tenric.task.json");
     if (!existsSync(taskFile)) nothingRan(`${taskFile} is missing: not a workspace prepared by the runtime`);
     const task = readJson(taskFile) as { id: string; title: string; data_class?: "measured" | "fixture"; limits?: { execution_timeout_seconds?: number } };

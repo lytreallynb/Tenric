@@ -120,6 +120,9 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
     const staging = mkdtempSync(join(tmpdir(), "tenric-workspace-"));
     await phase("workspace", () => {
       git(staging, "init", "-q");
+      // The workspace is checked out again by the verifier with whatever git configuration its machine has.
+      // Without this, a Windows checkout rewrites line endings and config.json no longer has the recorded digest.
+      writeFileSync(join(staging, ".gitattributes"), "* -text\n");
       writeFileSync(join(staging, "TASK.md"), plan.instructions);
       writeFileSync(join(staging, "tenric.task.json"), taskCopy);
       cpSync(join(repoRoot, "spec/runtime/research.experiment-report.claims.schema.json"), join(staging, "claims.schema.json"));
@@ -148,8 +151,12 @@ export async function runTask(options: RunOptions): Promise<RunSummary> {
       if (sha256File(join(repoRoot, plan.contract.registry_path)) !== plan.contract.registry_sha256) found.push(`contract registry ${plan.contract.registry_path} changed during the run`);
       if (trustedBaseDigest(repoRoot) !== baseBefore) found.push("files under spec/, src/, scripts/ or the lockfiles changed during the run");
       if (sha256File(join(recordDir, "plan.json")) !== planSha) found.push("tenric/plan.json changed during the run");
-      for (const name of ["tenric.task.json", "claims.schema.json"]) {
-        const expected = name === "tenric.task.json" ? createHash("sha256").update(taskCopy).digest("hex") : sha256File(join(repoRoot, "spec/runtime/research.experiment-report.claims.schema.json"));
+      const handed: Record<string, string> = {
+        "tenric.task.json": createHash("sha256").update(taskCopy).digest("hex"),
+        "claims.schema.json": sha256File(join(repoRoot, "spec/runtime/research.experiment-report.claims.schema.json")),
+        ".gitattributes": createHash("sha256").update("* -text\n").digest("hex"),
+      };
+      for (const [name, expected] of Object.entries(handed)) {
         if (!existsSync(join(workspace, name)) || sha256File(join(workspace, name)) !== expected) found.push(`the backend changed ${name}`);
       }
       const stray = readdirSync(runDir).filter((name) => name !== "tenric" && name !== "workspace");
