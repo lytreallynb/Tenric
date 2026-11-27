@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "baseline": "uv run --locked python experiments/baseline/run_baseline.py --out runs/baseline",
-    "tenric": "node src/cli.ts",
+    "tenric": "node src/tenric.ts",
     "verify": "bash scripts/verify.sh",
     "ui": "node ui/server/server.ts"
   },
