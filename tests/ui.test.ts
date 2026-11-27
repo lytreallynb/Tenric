@@ -16,7 +16,7 @@ import { startRun, getJob } from "../ui/server/jobs.ts";
 import { createApp } from "../ui/server/server.ts";
 
 const CONTRACT_ID = "research.experiment-report";
-const SCRATCH = ["ui-test-html", "ui-test-broken", "ui-test-escape", "ui-test-stub", "ui-test-taken"];
+const SCRATCH = ["ui-test-runtime", "ui-test-html", "ui-test-broken", "ui-test-escape", "ui-test-stub", "ui-test-taken"];
 let server: Server;
 let port: number;
 
@@ -310,6 +310,59 @@ describe("starting a run", () => {
     const missing = await startRun({ run_id: "ui-test-taken" }, ["/nonexistent/tenric-ui-test-binary"]);
     await expect.poll(() => getJob(missing.id).state, { timeout: 10_000 }).toBe("spawn_failed");
     expect(getJob(missing.id).exit_code).toBeNull();
+  });
+});
+
+describe("runs made by the runtime", () => {
+  const FIXTURE_TASK = "fixtures/tasks/coin-flips.task.json";
+
+  it("lists the runtime's backends and tasks, and labels fixture tasks", async () => {
+    const system = (await call("/api/system")).json;
+    const expected = JSON.parse(spawnSync(process.execPath, ["src/tenric.ts", "backends", "--json"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout) as any[];
+    expect(system.backends.map((b: any) => b.name)).toEqual(["baseline-script", ...expected.map((b) => b.name)]);
+    expect(system.tasks.find((t: any) => t.path === FIXTURE_TASK).fixture).toBe(true);
+    expect(system.tasks.filter((t: any) => t.path.startsWith("tasks/")).every((t: any) => t.fixture === false)).toBe(true);
+  });
+
+  it("compiles without running, and reports a precondition failure as no plan", async () => {
+    const ok = (await post("/api/compile", { task: FIXTURE_TASK, backend: "script" })).json;
+    expect(ok.ok).toBe(true);
+    expect(ok.plan.predicted).toBeDefined();
+    expect((await post("/api/compile", { task: "package.json", backend: "script" })).json.ok).toBe(false);
+    expect((await post("/api/compile", { task: FIXTURE_TASK, backend: "no-such-backend" })).json.ok).toBe(false);
+  });
+
+  it("starts a script-backend run, follows it, and agrees with the verdict the runtime recorded", async () => {
+    const started = await post("/api/runs", { run_id: "ui-test-runtime", backend: "script", task: FIXTURE_TASK });
+    expect(started.status).toBe(202);
+    await expect.poll(async () => (await call(`/api/jobs/${started.json.id}`)).json.state, { timeout: 120_000, interval: 500 }).toBe("exited");
+    const job = (await call(`/api/jobs/${started.json.id}`)).json;
+    expect(job.events.at(-1).type).toBe("run.finished");
+    expect(job.events.every((e: any) => ["runtime", "collector", "backend"].includes(e.source))).toBe(true);
+
+    const run = (await call("/api/runs/ui-test-runtime")).json;
+    const recorded = JSON.parse(readFileSync(join(REPO_ROOT, "runs/ui-test-runtime/tenric/run.json"), "utf8"));
+    expect(run.summary.runtime).toMatchObject({ backend: "script", recorded_verdict: recorded.verification.verdict });
+    expect(run.summary.data_class).toBe("fixture");
+    expect(run.default_contract).toEqual({ id: recorded.contract.id, version: recorded.contract.version });
+    expect(run.events.events.length).toBe(job.events.length);
+    expect(run.runtime.plan.plan_schema).toBeDefined();
+    expect(run.files.some((f: any) => f.path.includes(".git/"))).toBe(false);
+    expect([0, 1, 3]).toContain(job.exit_code);
+
+    // Verified again now, with the run's own re-execution task: the verifier must reach what the runtime recorded.
+    const again = (await post("/api/runs/ui-test-runtime/verify", { reproduce_task: run.reproduction_tasks[0].path })).json;
+    expect(again.issued).toBe(true);
+    expect(again.record.statement).toBe(recorded.verification.wording);
+    expect(again.exit_code).toBe(job.exit_code);
+    // Without re-execution the same run must not be reported as accepted when the contract requires reproduction.
+    const live = (await call("/api/runs/ui-test-runtime/verify")).json.record;
+    expect(live.results.find((r: any) => r.kind === "numeric-reproduction").status).toBe("not_run");
+    expect(live.verdict).not.toBe("accepted");
+  }, 300_000);
+
+  it("refuses a task that is not a listed task file", async () => {
+    expect((await post("/api/runs", { run_id: "ui-test-taken", backend: "script", task: "package.json" })).status).toBe(400);
   });
 });
 

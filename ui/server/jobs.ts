@@ -2,7 +2,7 @@
 // collector, so that is the only thing this can start. Jobs live in memory:
 // the durable record of a run is its directory, not this list.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJson, REPO_ROOT } from "./core.ts";
 import { BadRequest, NotFound, RUN_ID, RUNS_DIR } from "./data.ts";
@@ -38,6 +38,16 @@ export function getJob(id: string): Job {
   const job = jobs.find((j) => j.id === id);
   if (!job) throw new NotFound(`no job ${id}`);
   return job;
+}
+
+/** A job with the lifecycle events its run has written so far, so a long agent run can be followed while it is in progress. */
+export function followJob(id: string): Job & { events: unknown[] } {
+  const job = getJob(id);
+  const path = join(RUNS_DIR, job.run_id, "tenric", "events.jsonl");
+  const events = !existsSync(path) ? [] : readFileSync(path, "utf8").split("\n").flatMap((line) => {
+    try { return line.trim() === "" ? [] : [JSON.parse(line) as unknown]; } catch { return []; }
+  });
+  return { ...job, events };
 }
 
 export function defaultConfig(): unknown {
@@ -91,8 +101,8 @@ async function startRuntimeRun(request: StartRequest, runId: string, backend: st
   const known = (await listBackends()).backends.find((b) => b.name === backend && b.name !== "baseline-script");
   if (!known) throw new BadRequest(`the runtime does not list a backend named ${backend}`);
   if (!known.available) throw new BadRequest(`backend ${backend} is listed and not available: ${known.note ?? "no reason given"}`);
-  const task = listTasks().find((t) => t.id === request.task || t.path === request.task);
-  if (!task) throw new BadRequest("task must name one of the files under tasks/");
+  const task = listTasks().find((t) => t.path === request.task);
+  if (!task) throw new BadRequest("task must name one of the listed task files");
   const command = [process.execPath, RUNTIME_CLI, "run", "--task", task.path, "--backend", backend, "--out", `runs/${runId}`];
   if (request.model !== undefined) {
     if (typeof request.model !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:@\/\[\]-]{0,127}$/.test(request.model)) throw new BadRequest("model is not a plausible model identifier");

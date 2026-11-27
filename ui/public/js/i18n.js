@@ -9,7 +9,7 @@ const en = {
 
   overview_title: "Overview", overview_sub: "What this checkout contains, and what its runs were accepted or refused for.",
   dirty_title: "The working tree has uncommitted changes",
-  dirty_body: "A run started now records dirty=true, and the source-pinned requirement then fails, so its verdict will be rejected. Commit first if you want a run that can pass that requirement.",
+  dirty_body: "A baseline-script run started now records dirty=true, and the source-pinned requirement then fails, so its verdict will be rejected. Commit first if you want a baseline run that can pass that requirement. Runs made through the runtime pin their source to their own workspace and are not affected.",
   stat_contracts: "contract versions", stat_runs: "runs in runs/", stat_verdicts: "verdicts under the newest applicable contract", stat_no_verdict: "runs with no verdict issued",
   architecture: "Architecture (RFC-0001 section 3)",
   architecture_hint: "Each box shows what was found in this checkout, not what is planned. Details are under",
@@ -112,7 +112,7 @@ const en = {
   runtime_missing: "src/tenric.ts is not in this checkout, so there is no compiler, no runtime and no agent adapter to list. The baseline script below is the only thing that can produce a run.",
   runtime_error: "The runtime is present and did not answer",
   backend_claims_title: "Capabilities are what a backend declares", backend_claims_body: "They are reported by the adapter and are not verified here. Nothing a backend returns is evidence; exit status and files are observed by the collector.",
-  tasks: "Tasks", tasks_missing: "No task files under tasks/ in this checkout.", raw_status: "Raw status",
+  tasks: "Tasks", tasks_missing: "No runtime task files in this checkout.", raw_status: "Raw status",
 
   "component_re-execution": "Re-execution", component_capabilities: "Capability establishment", registry: "Registry", registry_digest: "Registry sha256", record_schema: "Verdict record schema",
   verify_reexecute: "Verify with re-execution", reexecuting: "Re-executing the task in a clean checkout. This takes seconds to minutes…",
@@ -122,6 +122,11 @@ const en = {
   capabilities_title: "Capabilities the contract requires", capabilities_note_title: "Recorded, not established",
   capabilities_note_body: "The contract requires these of the environment. The verifier records them and cannot establish any of them: producer and verifier still share a user and a working tree (docs/trust-model.md).",
   contract_unregistered: "This file is not the registered contract for its id and version, so no verdict can be issued under it", verifier_fault: "The verifier did not complete",
+  recorded_verdict: "Verdict recorded by the runtime", recorded_verdict_title: "Read from a file in the run directory",
+  recorded_verdict_body: "This is the verdict record the runtime stored when the run was made, with re-execution. It is a stored file, not a check performed now; the Verdict tab recomputes from the files as they are.",
+  statement: "Statement", reexecution_record: "Re-execution at run time", review_notes: "Left for a person", plan_warnings: "Compiler warnings", known_failures: "Requirements the compiler already knows will fail",
+  fixture_run_title: "Demonstration task, not a result", fixture_run_body: "This run was really executed, from a task that is labelled a fixture. It exercises the runtime and carries no experimental meaning.",
+  recorded_at_run: "Recorded at run time", runtime_exit_means: "The runtime's exit code means",
   docs_title: "Documents", docs_sub: "RFCs, decision records, reports and open questions from this checkout, with the status each one states.",
 };
 
@@ -133,7 +138,7 @@ const zh = {
 
   overview_title: "总览", overview_sub: "当前检出的仓库里有什么，以及其中的运行因为什么被接受或被拒绝。",
   dirty_title: "工作区有未提交的改动",
-  dirty_body: "现在启动的运行会记录 dirty=true，source-pinned 这条要求随之失败，判定会是 rejected。想得到能通过这条要求的运行，请先提交。",
+  dirty_body: "现在用基线脚本启动的运行会记录 dirty=true，source-pinned 这条要求随之失败，判定会是 rejected。想得到能通过这条要求的基线运行，请先提交。通过运行时产生的运行把源码固定在自己的工作区里，不受影响。",
   stat_contracts: "个契约版本", stat_runs: "个 runs/ 下的运行", stat_verdicts: "按最新适用契约得到的判定", stat_no_verdict: "个运行没有得到判定",
   architecture: "架构（RFC-0001 第 3 节）",
   architecture_hint: "每个方框显示的是在当前仓库里实际找到的东西，不是计划。细节见",
@@ -236,7 +241,7 @@ const zh = {
   runtime_missing: "当前仓库里没有 src/tenric.ts，所以没有编译器、运行时和 agent 适配器可以列出。下面的基线脚本是目前唯一能产生运行的东西。",
   runtime_error: "运行时存在，但没有应答",
   backend_claims_title: "能力是后端自己声明的", backend_claims_body: "它们由适配器报告，这里没有验证。后端返回的任何东西都不是证据；退出状态和文件由采集器观察。",
-  tasks: "任务", tasks_missing: "当前仓库的 tasks/ 下没有任务文件。", raw_status: "原始状态",
+  tasks: "任务", tasks_missing: "当前仓库里没有运行时任务文件。", raw_status: "原始状态",
 
   "component_re-execution": "重新执行", component_capabilities: "能力的确立", registry: "注册表", registry_digest: "注册表 sha256", record_schema: "判定记录格式版本",
   verify_reexecute: "重新执行并验证", reexecuting: "正在干净的检出中重新执行任务，需要几秒到几分钟…",
@@ -246,6 +251,11 @@ const zh = {
   capabilities_title: "契约要求的能力", capabilities_note_title: "只是记录，尚未确立",
   capabilities_note_body: "契约对环境提出了这些要求。验证器只是把它们记下来，一条也确立不了：生产方和验证器仍然共用同一个用户和同一个工作区（docs/trust-model.md）。",
   contract_unregistered: "这个文件不是其 id 和版本所登记的契约，所以不能按它给出判定", verifier_fault: "验证器没有完成",
+  recorded_verdict: "运行时记录的判定", recorded_verdict_title: "读取自运行目录里的文件",
+  recorded_verdict_body: "这是运行时在运行当时保存的判定记录（含重新执行）。它是一个保存下来的文件，不是现在做的检查；“判定”页签会根据文件的当前状态重新计算。",
+  statement: "判定语句", reexecution_record: "运行当时的重新执行", review_notes: "留给人来判断", plan_warnings: "编译器警告", known_failures: "编译器已经知道会失败的要求",
+  fixture_run_title: "演示任务，不是实验结果", fixture_run_body: "这个运行确实执行过，但它来自一个标注为演示数据的任务。它用来演练运行时，没有实验意义。",
+  recorded_at_run: "运行时记录", runtime_exit_means: "运行时退出码的含义",
   docs_title: "文档", docs_sub: "当前仓库里的 RFC、决策记录、报告和开放问题，以及每份文档自己标明的状态。",
 };
 

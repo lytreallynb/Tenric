@@ -12,7 +12,7 @@ export async function runList() {
   const draw = () => {
     const rows = runs.filter((r) => (state.origin === "" || r.origin === state.origin)
       && (state.verdict === "" || (state.verdict === "none" ? !r.verification : r.verification?.verdict === state.verdict)));
-    body.replaceChildren(table(["", t("run"), t("verdict"), t("mandatory_passed"), t("blocking"), t("execution"), t("data_class"), t("started"), `${t("runtime_s")}#`, t("revision"), "test_accuracy#"],
+    body.replaceChildren(table(["", t("run"), t("verdict"), t("mandatory_passed"), t("blocking"), t("recorded_at_run"), t("backend"), t("execution"), t("data_class"), t("started"), `${t("runtime_s")}#`, t("revision"), "test_accuracy#"],
       rows.map((run) => {
         const href = `#/runs/${encodeURIComponent(run.id)}`;
         const box = h("input", { type: "checkbox", checked: selected.has(run.id), "aria-label": `${t("compare")} ${run.id}`, onclick: (e) => e.stopPropagation(), onchange: () => {
@@ -25,6 +25,8 @@ export async function runList() {
           td(verdictCell(run)),
           td(run.verification ? `${run.verification.passed} / ${run.verification.total} · ${run.verification.version}` : "—"),
           td(run.verification ? run.verification.blocking.map((b) => frag(h("code", {}, b), " ")) : h("span", { class: "hint" }, run.no_verdict ?? "")),
+          td(run.runtime?.recorded_verdict ? badge(run.runtime.recorded_verdict) : h("span", { class: "faint" }, "—")),
+          td(h("code", {}, run.runtime?.backend ?? "baseline-script")),
           td(run.status ? badge(run.status) : "—"),
           td(dataClass(run.data_class)),
           td(time(run.started_at)),

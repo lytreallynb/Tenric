@@ -29,7 +29,6 @@ export interface Backend {
   available: boolean;
   note?: string;
   capabilities?: Record<string, unknown>;
-  raw?: unknown;
 }
 
 export async function listBackends(): Promise<{ backends: Backend[]; runtime: boolean; error?: string }> {
@@ -45,7 +44,7 @@ export async function listBackends(): Promise<{ backends: Backend[]; runtime: bo
     const list = Array.isArray(answer) ? answer : ((answer as { backends?: unknown[] }).backends ?? []);
     const backends = list.map((entry): Backend => {
       const b = entry as Record<string, any>;
-      return { name: String(b.name), kind: String(b.kind ?? "unknown"), available: b.available !== false, note: b.note ?? b.description, capabilities: b.capabilities, raw: b };
+      return { name: String(b.name), kind: String(b.kind ?? "unknown"), available: b.available !== false, note: b.summary ?? b.note ?? b.description, capabilities: b.capabilities };
     });
     return { backends: [builtin, ...backends], runtime: true };
   } catch (error) {
@@ -54,27 +53,30 @@ export async function listBackends(): Promise<{ backends: Backend[]; runtime: bo
   }
 }
 
-export interface Task { id: string; path: string; title?: string; contract?: unknown; error?: string }
+export interface Task { id: string; path: string; title?: string; contract?: unknown; script_producer?: string; fixture: boolean; error?: string }
 
+/** Runtime task files: tasks/*.task.json, and the demonstration tasks under fixtures/tasks/, which are labelled as fixtures. */
 export function listTasks(): Task[] {
-  const dir = join(REPO_ROOT, "tasks");
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir).filter((name) => name.endsWith(".task.json")).sort().map((name): Task => {
-    const path = `tasks/${name}`;
-    try {
-      const task = readJson(join(dir, name)) as Record<string, any>;
-      return { id: String(task.id ?? name.slice(0, -".task.json".length)), path, title: task.title, contract: task.contract };
-    } catch (error) {
-      return { id: name.slice(0, -".task.json".length), path, error: (error as Error).message };
-    }
+  return [["tasks", false], ["fixtures/tasks", true]].flatMap(([folder, fixture]) => {
+    const dir = join(REPO_ROOT, folder as string);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).filter((name) => name.endsWith(".task.json")).sort().map((name): Task => {
+      const path = `${folder}/${name}`;
+      try {
+        const task = readJson(join(dir, name)) as Record<string, any>;
+        return { id: String(task.id ?? name.slice(0, -".task.json".length)), path, title: task.title, contract: task.contract, script_producer: task.script_producer, fixture: fixture as boolean };
+      } catch (error) {
+        return { id: name.slice(0, -".task.json".length), path, fixture: fixture as boolean, error: (error as Error).message };
+      }
+    });
   });
 }
 
 /** Compiles without running: the plan, or the precondition failure, before any model usage is spent. */
 export async function compilePreview(taskRef: unknown, backend: unknown): Promise<{ ok: boolean; plan?: unknown; error?: string }> {
   if (!runtimeAvailable()) return { ok: false, error: `the compiler is not in this checkout (${RUNTIME_CLI} is absent)` };
-  const task = listTasks().find((t) => t.id === taskRef || t.path === taskRef);
-  if (!task) return { ok: false, error: "task must name one of the files under tasks/" };
+  const task = listTasks().find((t) => t.path === taskRef);
+  if (!task) return { ok: false, error: "task must name one of the listed task files" };
   if (typeof backend !== "string" || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(backend)) return { ok: false, error: "backend name is not valid" };
   try {
     return { ok: true, plan: await runtimeJson(["compile", "--task", task.path, "--backend", backend]) };

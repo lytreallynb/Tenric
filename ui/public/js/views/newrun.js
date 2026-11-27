@@ -2,6 +2,10 @@ import { api } from "../api.js";
 import { timers } from "../app.js";
 import { t } from "../i18n.js";
 import { badge, frag, h, json, notAvailable, notice, pageHead, table, td, time } from "../ui.js";
+import { eventList } from "./run.js";
+
+// Runtime command line exit codes (docs/runtime-interface.md); the baseline collector uses 0 and non-zero only.
+const RUNTIME_EXIT = { 0: "accepted", 1: "rejected", 2: "no verdict", 3: "inconclusive" };
 
 export async function newRun() {
   const [system, defaults, jobs] = await Promise.all([api.system(), api.runDefaults(), api.jobs()]);
@@ -11,7 +15,7 @@ export async function newRun() {
   const timeout = h("input", { type: "number", min: "0.01", max: "3600", step: "any", placeholder: "300" });
   const customise = h("input", { type: "checkbox" });
   const config = h("textarea", { spellcheck: false, disabled: true }, JSON.stringify(defaults.config, null, 2));
-  const task = h("select", {}, system.tasks.map((x) => h("option", { value: x.path }, `${x.id}${x.title ? ` · ${x.title}` : ""}`)));
+  const task = h("select", {}, system.tasks.map((x) => h("option", { value: x.path }, `${x.fixture ? "[fixture] " : ""}${x.id}${x.title ? ` · ${x.title}` : ""}`)));
   const model = h("input", { type: "text", placeholder: t("model_placeholder"), spellcheck: false });
   const message = h("div", {});
   const planBox = h("div", {});
@@ -33,10 +37,12 @@ export async function newRun() {
     jobBox.replaceChildren(
       h("h2", {}, `${t("job")} ${job.id}`),
       h("div", { class: "panel" }, h("dl", { class: "kv" },
-        h("dt", {}, t("state")), h("dd", {}, badge(job.state === "running" ? "running" : job.state === "exited" ? `exited ${job.exit_code}` : job.state, job.state === "running" ? "partial" : job.exit_code === 0 ? "pass" : "fail")),
+        h("dt", {}, t("state")), h("dd", {}, badge(job.state === "running" ? "running" : job.state === "exited" ? `exited ${job.exit_code}` : job.state, job.state === "running" ? "partial" : job.exit_code === 0 ? "pass" : job.state === "exited" ? "neutral" : "fail")),
         h("dt", {}, t("command")), h("dd", {}, h("code", { class: "wrap-any" }, job.command.join(" "))),
         h("dt", {}, t("started")), h("dd", {}, time(job.started_at)),
         h("dt", {}, t("run")), h("dd", {}, job.state === "running" ? h("span", { class: "muted" }, `runs/${job.run_id}`) : h("a", { href: `#/runs/${encodeURIComponent(job.run_id)}` }, `runs/${job.run_id} →`))),
+        job.backend !== "baseline-script" && job.state === "exited" ? h("p", {}, `${t("runtime_exit_means")}: `, badge(RUNTIME_EXIT[job.exit_code] ?? "unknown", job.exit_code === 2 ? "none" : "")) : null,
+        (job.events ?? []).length > 0 ? frag(h("h3", {}, t("event_log")), h("p", { class: "hint" }, t("event_log_hint")), eventList(job.events)) : null,
         h("h3", {}, t("process_output")), h("pre", { class: "wrap" }, job.log || t("no_output_yet")),
         job.state === "exited" && job.exit_code !== 0 ? h("p", { class: "hint" }, t("nonzero_hint")) : null));
   };

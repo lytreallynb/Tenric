@@ -20,13 +20,14 @@ function verdictPanel(run, outcome, reverify) {
   const picker = run.contracts.length > 1 ? h("select", { onchange: () => reverify(contractOf()) },
     run.contracts.map((c) => h("option", { value: `${c.id}@${c.version}`, selected: c.id === record.contract.id && c.version === record.contract.version }, `${c.id} ${c.version}`))) : null;
   const task = run.reproduction_tasks[0]?.path;
+  const repoFlag = run.summary.runtime ? `${run.summary.path}/workspace` : ".";
   const busy = h("span", { class: "hint" });
   const reproduce = task ? h("button", { class: "btn primary", onclick: async (event) => {
     event.target.disabled = true;
     busy.textContent = t("reexecuting");
     await reverify({ ...contractOf(), reproduce_task: task });
   } }, t("verify_reexecute")) : null;
-  const flags = record.reproduction?.requested ? ` --repo . --reproduce --task ${task ?? "<task>"}` : "";
+  const flags = record.reproduction?.requested ? ` --reproduce --task ${task ?? "<task>"}` : "";
   const required = record.capabilities?.required ?? [];
   const established = new Set(record.capabilities?.established ?? []);
 
@@ -39,7 +40,7 @@ function verdictPanel(run, outcome, reverify) {
       picker, h("button", { class: "btn", onclick: () => reverify(contractOf()) }, t("verify_again")), reproduce, busy),
     task ? null : h("p", { class: "hint" }, t("no_reproduction_task")),
     h("p", { class: "hint" }, `${t("issued_at")} `, time(record.issued_at), ` · ${t("cli_equivalent")}: `,
-      h("code", { class: "wrap-any" }, `node src/cli.ts verify ${run.summary.path} --contract ${record.contract.path}${flags}`)),
+      h("code", { class: "wrap-any" }, `node src/cli.ts verify ${run.summary.path} --contract ${record.contract.path} --repo ${repoFlag}${flags}`)),
 
     blocking.length > 0 ? notice(record.verdict === "rejected" ? "bad" : "warn", t("why_not_accepted"),
       h("ul", {}, blocking.map((r) => h("li", {}, h("code", {}, r.requirement), " ", badge(r.status), " ", r.title, r.detail ? h("div", { class: "mono wrap-any" }, r.detail) : null)))) : null,
@@ -124,7 +125,6 @@ function evidencePanel(run, outcome) {
     list.length === 0 ? h("div", { class: "empty" }, t("nothing_here")) : list.map((r) => recordCard(r, r.label.includes(".") ? [] : touching(r.section))));
   return frag(
     notice("warn", t("declared_provenance_title"), t("declared_provenance_body")),
-    artifact.data_class === "fixture" ? notice("warn", t("fixture_title"), t("fixture_body")) : null,
     h("div", { class: "lanes" },
       lane("evidence", t("lane_evidence"), t("lane_evidence_sub"), evidence),
       lane("claims", t("lane_claims"), t("lane_claims_sub"), claims)),
@@ -151,6 +151,8 @@ function outputsPanel(run) {
   };
   const state = (file) => {
     if (file.path === "artifact.json") return h("span", { class: "badge none plain" }, "artifact record");
+    if (file.path.startsWith("tenric/")) return h("span", { class: "badge runtime plain" }, "runtime record");
+    if (file.path.startsWith("workspace/")) return h("span", { class: "badge producer plain" }, "workspace");
     if (!file.listed) return h("span", { class: "badge none plain", title: t("unlisted_hint") }, t("unlisted"));
     if (!file.present) return badge("missing", "fail");
     if (file.escapes) return badge("escapes run dir", "fail");
@@ -177,6 +179,13 @@ function outputsPanel(run) {
 
 // ------------------------------------------------------------------ runtime
 
+export function eventList(events) {
+  return h("ul", { class: "timeline" }, events.map((e) => {
+    const { ts, type, source, seq: _seq, ...rest } = e;
+    return h("li", {}, h("span", { class: "muted mono" }, ts ?? ""), badge(source ?? "unknown", "plain"), h("div", {}, h("code", {}, type ?? ""), Object.keys(rest).length > 0 ? h("div", { class: "hint mono wrap-any" }, JSON.stringify(rest)) : null));
+  }));
+}
+
 function runtimePanel(run) {
   const { runtime, events } = run;
   if (!runtime.run && !runtime.plan && !events.available) return notAvailable(t("runtime_records"), t("runtime_records_missing"));
@@ -186,14 +195,17 @@ function runtimePanel(run) {
     r ? frag(h("h2", {}, t("runtime_summary")), h("div", { class: "panel" }, kv([
       [t("lifecycle_status"), frag(badge(r.status ?? "unknown", "plain"), r.status_detail ? ` ${r.status_detail}` : "")],
       [t("task"), r.task ? frag(h("code", {}, r.task.id), " ", r.task.title ?? "") : "—"],
-      [t("backend"), r.backend ? frag(h("code", {}, r.backend.name), " ", tag(r.backend.kind)) : "—"],
-      [t("backend_self_report"), r.backend?.self_report ? frag(badge("backend"), " ", h("code", { class: "wrap-any" }, JSON.stringify(r.backend.self_report)), h("div", { class: "hint" }, t("self_report_hint"))) : "—"],
+      [t("backend"), r.backend ? frag(h("code", {}, r.backend.name), " ", tag(r.backend.kind), r.backend.outcome ? frag(" ", badge(r.backend.outcome, "plain"), ` ${num(r.backend.seconds)} s`) : null) : "—"],
+      [t("contract"), r.contract ? frag(h("code", {}, `${r.contract.id} ${r.contract.version}`), " ", sha(r.contract.sha256)) : "—"],
+      [t("backend_self_report"), r.backend?.self_report && Object.keys(r.backend.self_report).length > 0 ? frag(badge("backend"), " ", h("code", { class: "wrap-any" }, JSON.stringify(r.backend.self_report)), h("div", { class: "hint" }, t("self_report_hint"))) : "—"],
       [t("created"), time(r.created_at)], [t("finished"), time(r.finished_at)],
     ])),
     Array.isArray(r.phases) ? table([t("phase"), t("status"), t("started"), `${t("seconds")}#`], r.phases.map((p) => h("tr", {}, td(h("code", {}, p.name)), td(badge(p.status ?? "unknown", "plain")), td(time(p.started_at)), td(num(p.seconds), "num")))) : null) : null,
 
     plan ? frag(h("h2", {}, t("compiled_plan")),
       plan.predicted ? notice("info", t("predicted"), frag(badge(plan.predicted.best_verdict ?? "unknown"), " ", (plan.predicted.blocking_unavailable ?? []).length > 0 ? `${t("blocking_unavailable")}: ${plan.predicted.blocking_unavailable.join(", ")}` : "")) : null,
+      (plan.warnings ?? []).length > 0 ? notice("warn", t("plan_warnings"), h("ul", {}, plan.warnings.map((w) => h("li", {}, typeof w === "string" ? w : JSON.stringify(w))))) : null,
+      (plan.predicted?.known_failures ?? []).length > 0 ? notice("bad", t("known_failures"), h("ul", {}, plan.predicted.known_failures.map((w) => h("li", {}, typeof w === "string" ? w : JSON.stringify(w))))) : null,
       plan.applicability ? h("div", { class: "panel" }, kv([
         [t("required_capabilities"), (plan.applicability.required ?? []).map((c) => frag(tag(c), " "))],
         [t("provided_by"), h("code", { class: "wrap-any" }, JSON.stringify(plan.applicability.provided ?? {}))],
@@ -206,14 +218,31 @@ function runtimePanel(run) {
       plan.instructions ? h("details", {}, h("summary", {}, t("instructions_sent")), h("pre", { class: "wrap" }, plan.instructions)) : null,
       h("details", {}, h("summary", {}, "tenric/plan.json"), json(plan))) : null,
 
+    runtime.verification ? frag(h("h2", {}, t("recorded_verdict")),
+      notice("info", t("recorded_verdict_title"), t("recorded_verdict_body")),
+      h("div", { class: "panel" }, kv([
+        [t("verdict"), runtime.verification.verdict ? badge(runtime.verification.verdict) : "—"],
+        [t("statement"), h("code", { class: "wrap-any" }, runtime.verification.statement ?? "—")],
+        [t("issued_at"), time(runtime.verification.issued_at)],
+        [t("artifact_digest"), sha(runtime.verification.artifact?.sha256, true)],
+        [t("reproduction"), runtime.verification.reproduction?.requested ? t("reproduction_requested") : t("reproduction_not_requested")],
+      ])),
+      h("details", {}, h("summary", {}, "tenric/verification.json"), json(runtime.verification))) : null,
+
+    runtime.reexecution ? frag(h("h2", {}, t("reexecution_record")),
+      Array.isArray(runtime.reexecution.outputs) ? table([t("file"), t("determinism"), "first sha256", "second sha256", ""], runtime.reexecution.outputs.map((o) => h("tr", {},
+        td(h("code", {}, o.path)), td(o.determinism ? tag(o.determinism) : "—"), td(sha(o.first_sha256)), td(sha(o.second_sha256)),
+        td(badge(o.identical ? "identical" : "differs", o.identical ? "pass" : o.determinism === "volatile" ? "neutral" : "fail"))))) : null,
+      Array.isArray(runtime.reexecution.metrics) ? frag(h("div", { class: "spacer" }), table([t("metric"), "first#", "second#", "|Δ|#"], runtime.reexecution.metrics.map((m) => h("tr", {},
+        td(h("code", {}, m.name)), td(num(m.first), "num"), td(num(m.second), "num"), td(num(m.abs_diff), "num"))))) : null) : null,
+
+    Array.isArray(r?.review_notes) && r.review_notes.length > 0 ? frag(h("h2", {}, t("review_notes")), h("ul", {}, r.review_notes.map((n) => h("li", {}, n)))) : null,
+
     h("h2", {}, t("event_log")),
     events.available ? frag(
       h("p", { class: "hint" }, t("event_log_hint")),
       events.malformed > 0 ? notice("warn", t("malformed_events"), String(events.malformed)) : null,
-      h("ul", { class: "timeline" }, events.events.map((e) => {
-        const { ts, type, source, seq: _seq, ...rest } = e;
-        return h("li", {}, h("span", { class: "muted mono" }, ts ?? ""), badge(source ?? "unknown", "plain"), h("div", {}, h("code", {}, type ?? ""), Object.keys(rest).length > 0 ? h("div", { class: "hint mono wrap-any" }, JSON.stringify(rest)) : null));
-      }))) : notAvailable(t("event_log"), t("event_log_missing")),
+      eventList(events.events)) : notAvailable(t("event_log"), t("event_log_missing")),
   );
 }
 
@@ -250,8 +279,11 @@ export async function runDetail({ args: [id, tab] }) {
     pageHead(s.title ?? id, frag(h("code", {}, s.path), s.experiment_id ? frag(" · ", t("experiment"), " ", h("code", {}, s.experiment_id)) : null),
       h("a", { class: "btn", href: `#/compare?a=${encodeURIComponent(id)}` }, t("compare_with_another")),
       frag(h("a", { href: "#/runs" }, t("nav_runs")), " / ", id)),
-    s.origin === "fixture" || s.data_class === "fixture" ? notice("warn", t("fixture_title"), t("fixture_body")) : null,
+    s.origin === "fixture" ? notice("warn", t("fixture_title"), t("fixture_body"))
+      : s.data_class === "fixture" ? notice("warn", t("fixture_run_title"), t("fixture_run_body")) : null,
     s.readable ? null : notice("bad", t("artifact_unreadable"), s.error),
+    s.runtime ? h("div", { class: "row" }, tag(`${t("backend")}: ${s.runtime.backend ?? "?"}`), tag(`${t("task")}: ${s.runtime.task ?? "?"}`), h("span", { class: "hint" }, `${t("lifecycle_status")}: `), badge(s.runtime.status ?? "unknown", "plain")) : null,
+    s.runtime ? h("div", { class: "spacer" }) : null,
     h("div", { class: "grid cols-4" },
       verdictStat,
       h("div", { class: "stat" }, h("div", {}, s.status ? badge(s.status) : "—", s.exit_code !== undefined ? h("span", { class: "muted" }, ` exit ${s.exit_code}`) : null), h("div", { class: "l" }, frag(t("execution"), " · ", num(s.runtime_seconds), " s · ", time(s.started_at)))),

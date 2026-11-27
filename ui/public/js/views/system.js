@@ -27,8 +27,8 @@ export async function system() {
     data.tasks.length === 0
       ? notAvailable(t("tasks"), t("tasks_missing"))
       : table([t("task"), t("title"), t("file"), t("contract")], data.tasks.map((task) => h("tr", {},
-        td(h("code", {}, task.id)), td(task.error ? badge("error") : task.title ?? "—"), td(h("code", {}, task.path)),
-        td(task.contract ? h("code", {}, typeof task.contract === "string" ? task.contract : JSON.stringify(task.contract)) : "—")))),
+        td(frag(h("code", {}, task.id), task.fixture ? frag(" ", badge("fixture")) : null)), td(task.error ? badge("error") : task.title ?? "—"), td(h("code", {}, task.path)),
+        td(task.contract ? h("code", {}, typeof task.contract === "string" ? task.contract : `${task.contract.id} ${task.contract.version}`) : "—")))),
 
     h("h2", {}, t("raw_status")),
     h("details", {}, h("summary", {}, "/api/system"), json(data)),

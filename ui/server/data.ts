@@ -172,13 +172,15 @@ export interface RunSummary {
   metrics?: { name: string; value: number }[];
   verification?: { exit_code: number; contract: string; version: string; verdict: string; passed: number; total: number; blocking: string[] };
   no_verdict?: string;
+  runtime?: { status?: string; backend?: string; backend_kind?: string; task?: string; recorded_verdict: string | null };
 }
 
 interface Located { id: string; origin: "run" | "fixture"; dir: string; artifactPath: string }
 
 function locateAll(): Located[] {
   const runs = dirs(RUNS_DIR)
-    .filter((id) => RUN_ID.test(id) && existsSync(join(RUNS_DIR, id, "artifact.json")))
+    // A void run has a runtime summary and no artifact: it is listed, with no verdict.
+    .filter((id) => RUN_ID.test(id) && (existsSync(join(RUNS_DIR, id, "artifact.json")) || existsSync(join(RUNS_DIR, id, "tenric", "run.json"))))
     .map((id): Located => ({ id, origin: "run", dir: join(RUNS_DIR, id), artifactPath: join(RUNS_DIR, id, "artifact.json") }));
   const fixtures = dirs(FIXTURES_DIR).flatMap((group) =>
     readdirSync(join(FIXTURES_DIR, group))
@@ -200,6 +202,7 @@ function locate(id: string): Located {
 }
 
 function readArtifact(path: string): { artifact: Json | null; error?: string } {
+  if (!existsSync(path)) return { artifact: null, error: "there is no artifact.json: the run produced no artifact" };
   try {
     const artifact = readJson(path);
     if (artifact === null || typeof artifact !== "object" || Array.isArray(artifact)) return { artifact: null, error: "artifact.json is not an object" };
@@ -209,17 +212,60 @@ function readArtifact(path: string): { artifact: Json | null; error?: string } {
   }
 }
 
-/** Fixtures are a single file, not a run directory: there is nothing to check outputs against, so they are never verified here. */
+/** The runtime's own summary of a run it made (tenric/run.json), or null for a run made by the baseline script alone. */
+function runtimeSummary(run: Located): Json | null {
+  const path = join(run.dir, "tenric", "run.json");
+  if (run.origin !== "run" || !existsSync(path)) return null;
+  try {
+    return readJson(path) as Json;
+  } catch (error) {
+    return { unreadable: (error as Error).message };
+  }
+}
+
+/**
+ * The repository a run's source revision must exist in. A runtime run pins its
+ * source to the git repository in its own workspace/; a baseline run pins it to this checkout.
+ */
+function sourceRepo(run: Located): string {
+  const workspace = join(run.dir, "workspace");
+  return runtimeSummary(run) && existsSync(workspace) ? workspace : REPO_ROOT;
+}
+
 function verifyLocated(run: Located, contractPath: string): VerdictRecord {
-  return verify(run.dir, join(REPO_ROOT, contractPath));
+  return verify(run.dir, join(REPO_ROOT, contractPath), sourceRepo(run));
+}
+
+/** The contract to verify under when none is named: the one the runtime compiled the run against, else the newest applicable. */
+function defaultContract(run: Located, artifact: Json | null): ContractSummary | undefined {
+  const applicable = applicableContracts(artifact);
+  const compiled = runtimeSummary(run)?.contract;
+  return applicable.find((c) => c.id === compiled?.id && c.version === compiled?.version) ?? applicable.at(-1);
+}
+
+/** Task files this run can be re-executed with. */
+function reproductionTasksFor(run: Located, artifact: Json | null): { path: string; experiment_id: string | null }[] {
+  if (run.origin !== "run") return [];
+  const own = join(run.dir, "tenric", "reproduce.task.json");
+  if (runtimeSummary(run)) return existsSync(own) ? [{ path: rel(own), experiment_id: artifact?.experiment_id ?? null }] : [];
+  return reproductionTasks().filter((task) => task.experiment_id === artifact?.experiment_id);
 }
 
 function summariseRun(run: Located): RunSummary {
   const { artifact, error } = readArtifact(run.artifactPath);
   const summary: RunSummary = {
     id: run.id, origin: run.origin, path: rel(run.origin === "run" ? run.dir : run.artifactPath),
-    readable: artifact !== null, error, artifact_sha256: sha256File(run.artifactPath),
+    readable: artifact !== null, error, artifact_sha256: existsSync(run.artifactPath) ? sha256File(run.artifactPath) : undefined,
   };
+  const runtime = runtimeSummary(run);
+  if (runtime) {
+    // Read from a file in the run directory: what the runtime recorded when the run was made, not a verdict computed now.
+    summary.runtime = {
+      status: runtime.status, backend: runtime.backend?.name, backend_kind: runtime.backend?.kind, task: runtime.task?.id,
+      recorded_verdict: runtime.verification?.verdict ?? null,
+    };
+    Object.assign(summary, { title: runtime.task?.title, data_class: runtime.data_class, started_at: runtime.created_at });
+  }
   if (artifact) {
     Object.assign(summary, {
       experiment_id: artifact.experiment_id,
@@ -237,9 +283,9 @@ function summariseRun(run: Located): RunSummary {
     summary.no_verdict = "fixture: a single hand-written file with no run directory, so it is not verified";
     return summary;
   }
-  const contract = applicableContracts(artifact).at(-1);
+  const contract = defaultContract(run, artifact);
   if (!contract) {
-    summary.no_verdict = artifact ? `no usable contract governs ${artifact.artifact_type} IR ${artifact.ir_version}` : "artifact unreadable and no contract selected";
+    summary.no_verdict = artifact ? `no usable contract governs ${artifact.artifact_type} IR ${artifact.ir_version}` : (error ?? "artifact unreadable");
     return summary;
   }
   try {
@@ -267,6 +313,7 @@ export function listRuns(): RunSummary[] {
 function walk(dir: string, base = dir): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
+    if (entry.isDirectory() && entry.name === ".git") return []; // the workspace's repository internals are not run output
     if (entry.isDirectory()) return walk(path, base);
     return [relative(base, path).split(sep).join("/")];
   }).sort();
@@ -355,16 +402,18 @@ export function getRun(id: string) {
     summary: summariseRun(run),
     artifact,
     artifact_error: error,
-    artifact_text: readFileSync(run.artifactPath, "utf8"),
+    artifact_text: existsSync(run.artifactPath) ? readFileSync(run.artifactPath, "utf8") : "",
     files: fileRows(run, artifact),
     report: run.origin === "run" && existsSync(reportPath) && inside(run.dir, reportPath) ? readFileSync(reportPath, "utf8") : null,
     contracts: applicableContracts(artifact).map((c) => ({ id: c.id, version: c.version, path: c.path })),
-    reproduction_tasks: run.origin === "run" ? reproductionTasks().filter((task) => task.experiment_id === artifact?.experiment_id) : [],
+    default_contract: (() => { const c = defaultContract(run, artifact); return c ? { id: c.id, version: c.version } : null; })(),
+    reproduction_tasks: reproductionTasksFor(run, artifact),
     events: readEvents(run),
     runtime: {
       run: readOptionalJson(run, "run.json"),
       plan: readOptionalJson(run, "plan.json"),
       verification: readOptionalJson(run, "verification.json"),
+      reexecution: readOptionalJson(run, "reexecution.json"),
     },
   };
 }
@@ -398,18 +447,18 @@ export async function verifyRun(id: string, options: VerifyOptions = {}): Promis
   if (options.contractId && options.contractVersion) {
     path = rel(findContract(options.contractId, options.contractVersion).path);
   } else {
-    const fallback = applicableContracts(readArtifact(run.artifactPath).artifact).at(-1);
+    const fallback = defaultContract(run, readArtifact(run.artifactPath).artifact);
     if (!fallback) return { issued: false, no_verdict: "no usable, registered contract governs this artifact type and IR version" };
     path = fallback.path;
   }
-  if (options.reproduceTask !== undefined && !reproductionTasks().some((task) => task.path === options.reproduceTask)) {
-    throw new BadRequest("reproduce_task must be one of the task files under experiments/");
+  if (options.reproduceTask !== undefined && !reproductionTasksFor(run, readArtifact(run.artifactPath).artifact).some((task) => task.path === options.reproduceTask)) {
+    throw new BadRequest("reproduce_task must be a task file this run can be re-executed with");
   }
   try {
     // Repository-relative paths, so the record reads the same as one made by the command line from the repository root.
     const record = options.reproduceTask === undefined
       ? verifyLocated(run, path)
-      : await verifyWithReExecution(rel(run.dir), path, options.reproduceTask);
+      : await verifyWithReExecution(rel(run.dir), path, options.reproduceTask, rel(sourceRepo(run)) || ".");
     const raw = readJson(join(REPO_ROOT, path)) as Json;
     return {
       issued: true,

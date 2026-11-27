@@ -41,7 +41,7 @@ It prints the contract's SHA-256, the artifact's SHA-256, the verifier's revisio
 npm run ui        # then open http://localhost:4173
 ```
 
-A local, read-only view of this checkout: contracts and their requirements, every run under `runs/`, the verdict for each run with the result of every requirement, evidence beside claims, output digests against the files on disk, a comparison of two runs, and the documents under `docs/`. It can also start a baseline run. It computes every verdict by calling the verifier and stores nothing. It listens on the loopback interface only; `TENRIC_UI_PORT` changes the port. It is implemented and tested, and not approved; see [ADR-0009](docs/adr/0009-local-web-interface.md) for what it is and is not.
+A local, read-only view of this checkout: contracts and their requirements, every run under `runs/`, the verdict for each run with the result of every requirement, evidence beside claims, output digests against the files on disk, a comparison of two runs, and the documents under `docs/`. For runs made by the runtime it also shows the compiled plan, lifecycle events and the backend's own account, labelled as such. It can start a baseline run or a runtime run with any listed backend and task. It computes every verdict by calling the verifier and stores nothing. It listens on the loopback interface only; `TENRIC_UI_PORT` changes the port. It is implemented and tested, and not approved; see [ADR-0009](docs/adr/0009-local-web-interface.md) for what it is and is not.
 
 ## What is here
 

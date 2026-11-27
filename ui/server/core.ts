@@ -28,12 +28,14 @@ export function repoRevision(): Revision {
 
 /**
  * The verifier's verdict for one run directory under one contract, without
- * re-execution. Throws PreconditionError when no verdict may be issued
+ * re-execution. `repo` is the repository the artifact's source revision must
+ * exist in: this checkout for baseline runs, the run's own workspace for
+ * runs made by the runtime. Throws PreconditionError when no verdict may be issued
  * (unregistered, altered or invalid contract); the caller reports that as
  * "no verdict issued", never as a verdict.
  */
-export function verify(dir: string, contractPath: string): VerdictRecord {
-  return issueVerdict({ runDir: dir, contractPath, repo: REPO_ROOT });
+export function verify(dir: string, contractPath: string, repo: string = REPO_ROOT): VerdictRecord {
+  return issueVerdict({ runDir: dir, contractPath, repo });
 }
 
 /**
@@ -42,8 +44,8 @@ export function verify(dir: string, contractPath: string): VerdictRecord {
  * synchronously, so it runs in the verifier's own command line as a separate
  * process and the record is read from its output.
  */
-export async function verifyWithReExecution(dir: string, contractPath: string, taskPath: string): Promise<VerdictRecord> {
-  const args = ["src/cli.ts", "verify", dir, "--contract", contractPath, "--repo", ".", "--reproduce", "--task", taskPath, "--json"];
+export async function verifyWithReExecution(dir: string, contractPath: string, taskPath: string, repo: string = "."): Promise<VerdictRecord> {
+  const args = ["src/cli.ts", "verify", dir, "--contract", contractPath, "--repo", repo, "--reproduce", "--task", taskPath, "--json"];
   let stdout: string;
   try {
     ({ stdout } = await promisify(execFile)(process.execPath, args, { cwd: REPO_ROOT, timeout: 30 * 60_000, maxBuffer: 16 * 1024 * 1024 }));
