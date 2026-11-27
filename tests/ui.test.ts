@@ -373,4 +373,20 @@ describe("interface text", () => {
     const source = readFileSync(join(REPO_ROOT, "ui/public/js/i18n.js"), "utf8");
     for (const word of ["已接受", "已拒绝", "已验证", "验证正确"]) expect(source).not.toContain(word);
   });
+  it("serves every file the page loads, under a policy that allows no inline script or style", async () => {
+    const page = await call("/");
+    expect(page.status).toBe(200);
+    expect(String(page.headers["content-security-policy"])).toContain("default-src 'self'");
+    expect(page.text).not.toMatch(/<style|style=|<script(?![^>]*\bsrc=)/);
+    const loaded = [...page.text.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map((match) => match[1]!);
+    expect(loaded).toEqual(expect.arrayContaining(["/style.css", "/js/theme.js", "/js/app.js"]));
+    for (const path of loaded) expect((await call(path)).status, path).toBe(200);
+  });
+
+  it("builds the page from text nodes: no front-end file parses a string as HTML", () => {
+    const root = join(REPO_ROOT, "ui/public/js");
+    const files = [...readdirSync(root), ...readdirSync(join(root, "views")).map((name) => `views/${name}`)].filter((name) => name.endsWith(".js"));
+    expect(files.length).toBeGreaterThan(10);
+    for (const file of files) expect(readFileSync(join(root, file), "utf8"), file).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  });
 });

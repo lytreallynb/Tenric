@@ -128,6 +128,16 @@ const en = {
   fixture_run_title: "Demonstration task, not a result", fixture_run_body: "This run was really executed, from a task that is labelled a fixture. It exercises the runtime and carries no experimental meaning.",
   recorded_at_run: "Recorded at run time", runtime_exit_means: "The runtime's exit code means",
   docs_title: "Documents", docs_sub: "RFCs, decision records, reports and open questions from this checkout, with the status each one states.",
+  nav_group_inspect: "Inspect", nav_group_act: "Run", nav_group_ref: "Reference",
+  theme_auto: "Follow the system", theme_light: "Light", theme_dark: "Dark", copied: "Copied", retry: "Try again",
+  zone_producer: "Producer side · untrusted", zone_verifier: "Verifier side", local_only_short: "Local interface, stores nothing",
+  verdict_distribution: "Verdicts across runs", view_all: "All runs", empty_runs_title: "No runs yet",
+  search_runs: "Filter by run id or backend…", selected_n: "selected", clear: "Clear", pick_two: "Select two runs to compare them side by side.",
+  filter_all: "All", filter_not_passed: "Not passed", no_match_title: "No run matches these filters", no_match_body: "Change the filters or clear the search.",
+  rationale: "Why this requirement exists", verifier_detail: "What the verifier reported", no_detail: "The verifier reported no detail for this requirement.",
+  all_passed: "Every requirement in this record has status pass.", checking: "Asking the verifier…",
+  step_backend: "Choose who does the work", step_task: "Choose what to run", step_start: "Name the run and start it",
+  elapsed: "elapsed", open_run: "Open the run",
 };
 
 const zh = {
@@ -257,6 +267,16 @@ const zh = {
   fixture_run_title: "演示任务，不是实验结果", fixture_run_body: "这个运行确实执行过，但它来自一个标注为演示数据的任务。它用来演练运行时，没有实验意义。",
   recorded_at_run: "运行时记录", runtime_exit_means: "运行时退出码的含义",
   docs_title: "文档", docs_sub: "当前仓库里的 RFC、决策记录、报告和开放问题，以及每份文档自己标明的状态。",
+  nav_group_inspect: "查看", nav_group_act: "执行", nav_group_ref: "参考",
+  theme_auto: "跟随系统", theme_light: "浅色", theme_dark: "深色", copied: "复制好了", retry: "重试",
+  zone_producer: "生产方一侧 · 不可信", zone_verifier: "验证方一侧", local_only_short: "本地界面，不保存任何状态",
+  verdict_distribution: "各运行的判定", view_all: "全部运行", empty_runs_title: "还没有运行",
+  search_runs: "按运行 id 或后端过滤…", selected_n: "已选", clear: "清除", pick_two: "选两个运行，就能并排对比。",
+  filter_all: "全部", filter_not_passed: "未通过", no_match_title: "没有符合这些条件的运行", no_match_body: "换一下筛选条件，或清空搜索。",
+  rationale: "为什么有这条要求", verifier_detail: "验证器报告的内容", no_detail: "验证器没有为这条要求给出详情。",
+  all_passed: "这份记录里每条要求的状态都是 pass。", checking: "正在询问验证器…",
+  step_backend: "选择由谁来执行", step_task: "选择运行什么", step_start: "给运行命名并启动",
+  elapsed: "已用时", open_run: "打开这个运行",
 };
 
 const dictionaries = { en, zh };

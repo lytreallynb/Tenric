@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { t } from "../i18n.js";
-import { badge, frag, h, json, kv, notice, pageHead, sha, show, table, tabs, tag, td, verdictCell } from "../ui.js";
+import { setCrumbs } from "../app.js";
+import { badge, empty, frag, h, json, kv, notice, pageHead, sha, show, table, tabs, tag, td, verdictCell } from "../ui.js";
 
 const link = (c) => `#/contracts/${encodeURIComponent(c.id)}/${encodeURIComponent(c.version)}`;
 
@@ -15,7 +16,6 @@ function mix(r) {
 }
 const legend = () => h("div", { class: "legend" }, ["machine", "empirical", "human"].map((kind) => {
   const dot = h("i", { class: kind });
-  dot.style.background = `var(--${kind === "machine" ? "collector" : kind === "empirical" ? "error" : "human"})`;
   return h("span", {}, dot, kind);
 }));
 
@@ -23,14 +23,13 @@ export async function contractList() {
   const contracts = await api.contracts();
   return frag(
     pageHead(t("contracts_title"), t("contracts_sub")),
-    table([t("contract"), t("version"), t("registry"), t("title"), t("requirements"), t("verifiability"), t("without_validator"), "sha256"],
+    table([t("contract"), t("version"), t("registry"), t("title"), t("requirements"), t("without_validator"), "sha256"],
       contracts.map((c) => h("tr", { class: "clickable", onclick: () => { location.hash = link(c); } },
-        td(h("a", { href: link(c) }, h("code", {}, c.id))),
+        td(h("a", { class: "primary-cell", href: link(c) }, h("code", {}, c.id))),
         td(h("code", {}, c.version)),
         td(c.registered ? badge("registered", "pass") : badge("not registered", "fail")),
         td(c.usable ? c.title : frag(badge("error"), " ", h("span", { class: "muted wrap-any" }, c.error))),
-        td(c.usable ? `${c.requirements.mandatory} mandatory, ${c.requirements.advisory} advisory` : "—"),
-        td(c.usable ? mix(c.requirements) : "—"),
+        td(c.usable ? frag(h("span", { class: "mono" }, `${c.requirements.mandatory} mandatory · ${c.requirements.advisory} advisory`), mix(c.requirements)) : "—"),
         td(c.usable ? (c.requirements.without_validator > 0 ? h("span", { class: "badge partial plain" }, c.requirements.without_validator) : "0") : "—"),
         td(sha(c.sha256)))),
       { empty: t("no_contracts") }),
@@ -70,11 +69,11 @@ export async function contractDetail({ args: [id, version] }) {
   const picker = h("select", { onchange: async () => { diffBox.replaceChildren(picker.value ? await diffPanel(id, picker.value, version) : ""); } },
     h("option", { value: "" }, t("choose_version")), others.map((v) => h("option", { value: v }, v)));
 
+  setCrumbs([t("nav_contracts"), "#/contracts"], id, version);
   return frag(
     pageHead(summary.title ?? id, frag(h("code", {}, summary.id), " ", t("version"), " ", h("code", {}, summary.version)),
       data.versions.length > 1 ? frag(h("span", { class: "muted" }, t("version")), h("select", { onchange: (e) => { location.hash = link({ id, version: e.target.value }); } },
-        data.versions.map((v) => h("option", { value: v, selected: v === version }, v)))) : null,
-      frag(h("a", { href: "#/contracts" }, t("nav_contracts")), " / ", id)),
+        data.versions.map((v) => h("option", { value: v, selected: v === version }, v)))) : null),
     summary.usable ? null : notice("bad", t("contract_unusable"), summary.error),
     summary.usable && !summary.registered ? notice("bad", t("contract_unregistered"), summary.registration_error) : null,
     h("div", { class: "panel" }, kv([
@@ -89,8 +88,8 @@ export async function contractDetail({ args: [id, version] }) {
     tabs([
       { id: "requirements", label: `${t("requirements")} (${data.requirements.length})`, render: () => table(["id", t("requirement"), t("level"), t("verifiability"), t("check"), t("validator")], requirementRows(data.requirements)) },
       { id: "runs", label: `${t("runs_under_contract")} (${governed.length})`, render: () => table([t("run"), t("verdict"), t("mandatory_passed"), t("blocking")],
-        governed.map((r) => h("tr", {}, td(h("a", { href: `#/runs/${encodeURIComponent(r.id)}` }, r.id)), td(verdictCell(r)), td(`${r.verification.passed} / ${r.verification.total}`), td(r.verification.blocking.map((b) => frag(h("code", {}, b), " "))))), { empty: t("no_runs") }) },
-      { id: "diff", label: t("compare_versions"), render: () => (others.length === 0 ? notice("na", t("single_version"), t("single_version_body")) : frag(h("div", { class: "row" }, t("compare_with"), picker), h("div", { class: "spacer" }), diffBox)) },
+        governed.map((r) => h("tr", {}, td(h("a", { class: "primary-cell", href: `#/runs/${encodeURIComponent(r.id)}` }, r.id)), td(verdictCell(r)), td(`${r.verification.passed} / ${r.verification.total}`), td(r.verification.blocking.map((b) => frag(h("code", {}, b), " "))))), { empty: t("no_runs") }) },
+      { id: "diff", label: t("compare_versions"), render: () => (others.length === 0 ? empty(t("single_version"), t("single_version_body"), null, { icon: "contracts" }) : frag(h("div", { class: "row" }, t("compare_with"), picker), h("div", { class: "spacer" }), diffBox)) },
       { id: "raw", label: t("raw_json"), render: () => json(data.text) },
     ], "requirements"),
   );

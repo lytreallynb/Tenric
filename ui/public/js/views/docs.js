@@ -1,7 +1,8 @@
 import { api } from "../api.js";
 import { t } from "../i18n.js";
 import { markdown } from "../md.js";
-import { frag, h, pageHead } from "../ui.js";
+import { setCrumbs } from "../app.js";
+import { empty, frag, h, pageHead } from "../ui.js";
 
 const ORDER = ["rfcs", "reports", "adr", "docs", "repository"];
 
@@ -25,11 +26,12 @@ export async function docs({ args: [path] }) {
   const current = path && known.has(path) ? path : (list.find((d) => d.group === "rfcs") ?? list[0])?.path;
   const groups = [...new Set(list.map((d) => d.group))].sort((a, b) => (ORDER.indexOf(a) + 99) % 99 - (ORDER.indexOf(b) + 99) % 99);
   const doc = current ? await api.doc(current) : null;
+  if (doc) setCrumbs([t("nav_docs"), "#/docs"], doc.path);
   return frag(
     pageHead(t("docs_title"), t("docs_sub")),
     h("div", { class: "doc-layout" },
       h("nav", { class: "doc-list panel" }, groups.map((group) => frag(h("h3", {}, group),
         list.filter((d) => d.group === group).map((d) => h("a", { href: `#/docs/${d.path}`, class: d.path === current ? "active" : "" }, d.title, d.status ? h("small", {}, d.status) : null))))),
-      h("article", { class: "panel" }, doc ? frag(h("div", { class: "crumbs" }, h("code", {}, doc.path)), markdown(doc.text, resolver(doc.path, known))) : h("div", { class: "empty" }, t("nothing_here")))),
+      h("article", { class: "panel" }, doc ? markdown(doc.text, resolver(doc.path, known)) : empty(null, t("nothing_here")))),
   );
 }
