@@ -174,7 +174,7 @@ Rules:
 5. **A verdict is bound** to one contract id and version, one artifact digest, and the verifier's source revision. (Implemented: `src/verify.ts` returns a verdict record with the contract SHA-256, artifact SHA-256 and verifier revision; ADR-0007.)
 6. **Precondition failures produce no verdict.** An unsupported contract version, an invalid contract, a contract whose content is not the registered one, or an unmet capability means verification could not start. (Capabilities are not checked yet: the verifier issues a verdict and states in the record that none is established. Open question Q14.) This is distinct from all three verdicts and is the caller's failure, not the producer's.
 7. **Dependent validators do not guess.** If the artifact is not structurally valid, validators that read its structure report `error`.
-8. **A verdict is not a truth claim.** The wording to use is "accepted under contract X version Y: N of N mandatory requirements passed (k machine, m empirical, h human)", followed by "; evidence collected by C (attested)" or "; collector not attested" (ADR-0011). Never "verified correct".
+8. **A verdict is not a truth claim.** The wording to use is "accepted under contract X version Y: N of N mandatory requirements passed (k machine, m empirical, h human)", followed by "; signed with the key of trusted collector C" or "; collector not attested" (ADR-0011). Never "verified correct".
 
 ### 7.3 Why three verdicts and not two
 

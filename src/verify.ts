@@ -127,7 +127,7 @@ export function verify(options: VerifyOptions): VerdictRecord {
     });
   }
   const attested = attestation.problems.length === 0 && attestation.collector !== undefined;
-  const who = attested ? `; evidence collected by ${attestation.collector!.id} (attested)` : "; collector not attested";
+  const who = attested ? `; signed with the key of trusted collector ${attestation.collector!.id}` : "; collector not attested";
   // Forward slashes in the record on every platform, like every other path a tool writes.
   const shownPath = artifactPath.replaceAll("\\", "/");
   return {
