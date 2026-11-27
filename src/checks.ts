@@ -4,6 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
+import { ATTESTATION_PATH, checkAttestation, type Collectors } from "./attestation.ts";
 import { CannotReExecute, loadTask, NotReproducible, reExecute } from "./reproduce.ts";
 import { readJson, sha256File, validateArtifact, type Contract } from "./spec.ts";
 import type { CheckResult } from "./verdict.ts";
@@ -51,8 +52,15 @@ export interface CheckOptions {
   repo?: string;
   /** Re-execute the task for numeric-reproduction. Without it that requirement is not_run. */
   reproduce?: { taskPath: string };
+  /** The keys the operator trusts, for collector-attestation. Without them that requirement cannot be decided. */
+  collectors?: Collectors;
+  /** SHA-256 of the contract file being applied; an attestation must name it. */
+  contractSha256?: string;
 }
-interface Context { dir: string; repo: string; params: Record<string, unknown>; reproduce?: { taskPath: string } }
+interface Context {
+  dir: string; repo: string; params: Record<string, unknown>; reproduce?: { taskPath: string };
+  collectors?: Collectors; contract: Contract; contractSha256?: string;
+}
 /** Returns the problems found, optionally with a note for the report. Throws when it cannot decide, which is reported as error. */
 type Check = (artifact: Artifact, context: Context) => string[] | { problems: string[]; note: string };
 
@@ -175,6 +183,16 @@ const implemented: Record<string, Check> = {
     if (artifact.metrics.length < min_metrics) problems.push(`${artifact.metrics.length} metrics, at least ${min_metrics} required`);
     if (artifact.findings.length < min_findings) problems.push(`${artifact.findings.length} findings, at least ${min_findings} required`);
     return problems;
+  },
+  "collector-attestation": (artifact, { dir, collectors, contract, contractSha256 }) => {
+    if (!collectors) throw new Error("no collectors file was given, so no key can be trusted");
+    if (!contractSha256) throw new Error("the contract's digest was not given");
+    const { problems, collector } = checkAttestation(join(dir, ATTESTATION_PATH), collectors, {
+      artifactSha256: sha256File(join(dir, "artifact.json")),
+      sourceRevision: artifact.source.revision,
+      contract: { id: contract.id, version: contract.version, sha256: contractSha256 },
+    });
+    return problems.length > 0 ? problems : { problems, note: `attested by collector ${collector!.id} (key ${collector!.key_id.slice(0, 16)}…; custody: ${collector!.custody})` };
   },
   "internal-consistency": (artifact) => {
     const listed = new Set(artifact.outputs.map((o) => o.path));
@@ -300,7 +318,10 @@ export function runChecks(contract: Contract, dir: string, options: CheckOptions
     // Other validators assume the structure they read; without it they cannot decide.
     if (!structurallyValid) return { requirement: requirement.id, status: "error", detail: "artifact is not structurally valid" };
     try {
-      const context = { dir, repo: options.repo ?? dir, params: requirement.check.params ?? {}, reproduce: options.reproduce };
+      const context = {
+        dir, repo: options.repo ?? dir, params: requirement.check.params ?? {}, reproduce: options.reproduce,
+        collectors: options.collectors, contract, contractSha256: options.contractSha256,
+      };
       const outcome = check(artifact as Artifact, context);
       const { problems, note } = Array.isArray(outcome) ? { problems: outcome, note: undefined } : outcome;
       if (problems.length > 0) return { requirement: requirement.id, status: "fail", detail: problems.join("; ") };

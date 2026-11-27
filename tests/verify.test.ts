@@ -28,7 +28,7 @@ describe("contract registry", () => {
   it("lists every contract file in the repository with the digest of its current bytes", () => {
     const registry = loadRegistry();
     expect(registry.contracts.map((c) => `${c.id}@${c.version}`)).toEqual(
-      ["research.experiment-report@0.1.0", "research.experiment-report@0.2.0", "research.experiment-report@0.3.0"],
+      ["research.experiment-report@0.1.0", "research.experiment-report@0.2.0", "research.experiment-report@0.3.0", "research.experiment-report@0.4.0"],
     );
     for (const entry of registry.contracts) {
       expect(existsSync(REPO_ROOT + entry.path), entry.path).toBe(true);
@@ -113,11 +113,13 @@ describe("verify: the verdict record", () => {
     );
     expect(record.verdict).toBe("inconclusive");
     expect(record.statement).toBe(
-      "inconclusive under contract research.experiment-report version 0.2.0: 9 of 10 mandatory requirements passed (9 machine, 0 empirical, 0 human)",
+      "inconclusive under contract research.experiment-report version 0.2.0: 9 of 10 mandatory requirements passed (9 machine, 0 empirical, 0 human); collector not attested",
     );
     expect(record.summary).toEqual({ mandatory: 10, passed: 9, machine: 9, empirical: 0, human: 0 });
     expect(record.capabilities).toEqual({ required: ["independent-collector", "content-hashing"], established: [] });
     expect(record.reproduction).toEqual({ requested: false });
+    expect(record.collector.attested).toBe(false);
+    expect(record.collector.problems.join("\n")).toMatch(/attestation/);
   });
 
   it("a test-only contract can be judged against its own registry, and the record shows it is not the published one", () => {

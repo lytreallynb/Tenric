@@ -72,7 +72,7 @@
                 "artifact-schema", "output-integrity", "metric-traceability",
                 "collector-provenance", "execution-succeeded", "source-pinned",
                 "finding-references", "numeric-reproduction", "human-review",
-                "required-content", "internal-consistency"
+                "required-content", "internal-consistency", "collector-attestation"
               ]
             },
             "params": { "type": "object" }
