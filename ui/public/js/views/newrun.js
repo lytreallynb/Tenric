@@ -84,7 +84,11 @@ export async function newRun() {
   layout();
   const agent = () => selected()?.kind === "agent";
   const cost = h("div", {});
-  const drawCost = () => cost.replaceChildren(agent() ? notice("warn", t("agent_cost_title"), t("agent_cost_body")) : "");
+  const backendNote = h("span", { class: "hint" });
+  const drawCost = () => {
+    backendNote.textContent = selected()?.note ?? "";
+    cost.replaceChildren(agent() ? notice("warn", t("agent_cost_title"), t("agent_cost_body")) : "");
+  };
   backend.addEventListener("change", drawCost);
   drawCost();
 
@@ -104,7 +108,7 @@ export async function newRun() {
     system.backends.some((b) => b.kind === "agent") ? null : notAvailable(t("component_agent-backends"), t("agent_missing")),
     h("div", { class: "grid cols-2" },
       h("div", { class: "panel" },
-        h("label", { class: "field" }, h("span", {}, t("backend")), backend, h("span", { class: "hint" }, selected()?.note ?? "")),
+        h("label", { class: "field" }, h("span", {}, t("backend")), backend, backendNote),
         h("label", { class: "field" }, h("span", {}, t("run_id")), runId, h("span", { class: "hint" }, t("run_id_hint"))),
         cost,
         h("button", { class: "btn primary", onclick: start }, t("start_run")),
