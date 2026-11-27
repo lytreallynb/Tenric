@@ -8,7 +8,7 @@ The owner asked for everything to be done better. The project coordinator turned
 
 ## 2. Collector attestation (items a and b)
 
-Implemented as ADR-0011 and contract 0.4.0 (R-012). A collector signs a statement (Ed25519) naming the artifact's digest, the source revision and the contract; the verifier accepts it only from a key in the operator's collectors file. The repository's own collectors file is empty. Every verdict, under every contract, now ends with `; collector not attested` or `; evidence collected by <id> (attested)`.
+Implemented as ADR-0011 and contract 0.4.0 (R-012). A collector signs a statement (Ed25519) naming the artifact's digest, the source revision and the contract; the verifier accepts it only from a key in the operator's collectors file. The repository's own collectors file is empty. Every verdict, under every contract, now ends with `; collector not attested` or `; signed with the key of trusted collector <id>`.
 
 `tests/attestation.test.ts`, verbose output at the commit that added it:
 
@@ -68,7 +68,11 @@ Locally (Linux), `ldd` on Pillow's `_imaging` module shows `libz.so.1 => /lib/x8
 
 Consequence beyond the cross-platform question: on Linux the PNG's bytes depend on a system package that `uv.lock` does not pin. Two Linux machines with different zlib packages can produce different bytes, and R-008 would see that as a byte difference in an environment it considers equal. Not fixed in this slice; options are recording the zlib version in the environment section, writing the PNG with a fixed compressor, or a `pixel-identical` class (Q18).
 
-## 5. Limits
+## 5. Results from the runtime work under 0.4.0
+
+Reported by the runtime work (`docs/reports/runtime-report.md` section 10 on its branch, 870019b), not reproduced here: 21 sandboxed runtime runs were all signed and passed R-012, 19 accepted and 2 rejected by R-008. 18 group B runs in the same sandbox, judged with the runtime's key trusted, were all rejected by R-012 ("no collector attestation"), 16 of them with R-012 as the only failure. No agent tried to write an attestation. A run from the hand-run collector (group C), signed with the runtime's key, was accepted. That is correct by design, but the statement then read "evidence collected by" the runtime; it now reads "signed with the key of trusted collector" (ADR-0011, Wording).
+
+## 6. Limits
 
 - No real collector holds a key yet. The accepted 0.4.0 runs in the tests are signed by keys generated in the test process. Whether the runtime's key is out of the agent's reach is the runtime's claim (ADR-0010), not tested here.
 - The collectors file is trusted because the verifier's checkout is (same root of trust as the contract registry, Q16). Who keeps it is Q26.
