@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "tests", "ui/server", "evaluation"]
+  "include": ["src", "tests", "ui/server", "ui/start.ts", "evaluation"]
 }

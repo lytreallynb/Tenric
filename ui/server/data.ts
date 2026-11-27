@@ -409,6 +409,7 @@ function trustBoundary(run: Located, runJson: Json | null, plan: Json | null, ev
     isolation: runJson?.isolation ?? null,
     backend_sandbox: backendCaps?.sandbox ?? null,
     attestation: runJson?.attestation ?? null,
+    attestation_refused: typeof runJson?.attestation_refused === "string" ? runJson.attestation_refused : null,
     integrity: integrity ? { ts: integrity.ts ?? null, violations: Array.isArray(integrity.violations) ? integrity.violations : null } : null,
     trusted_base_sha256: runJson?.trusted_base_sha256 ?? null,
     review_checklist: Array.isArray(plan?.review_checklist) ? plan.review_checklist : null,

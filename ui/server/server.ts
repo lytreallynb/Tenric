@@ -1,12 +1,13 @@
-// Local web interface for Tenric. Node's built-in http server, no framework,
-// no build step (ADR-0002). Start with `npm run ui`.
+// Local web interface for Tenric. Node's built-in http server serves the JSON
+// API and the front end built into ui/web/dist (ADR-0012). Start with `npm run ui`,
+// which builds the front end first when its sources changed.
 //
 // It listens on the loopback interface only and can start processes, so it
 // refuses requests whose Host is not a loopback name (DNS rebinding) and
 // state-changing requests that a foreign web page could have sent.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { extname, join, normalize, sep } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BadRequest, compareRuns, contractDiff, getContract, getDoc, getRun, listContracts, listDocs, listRuns, NotFound, runFile, verifyRun,
@@ -14,13 +15,16 @@ import {
 import { cancelJob, defaultConfig, followJob, listJobs, startRun } from "./jobs.ts";
 import { compilePreview, systemStatus } from "./system.ts";
 
-const PUBLIC_DIR = fileURLToPath(new URL("../public/", import.meta.url));
+export const DIST_DIR = fileURLToPath(new URL("../web/dist/", import.meta.url));
 const STATIC_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
   ".json": "application/json; charset=utf-8",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".png": "image/png",
 };
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -61,15 +65,19 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-function serveStatic(res: ServerResponse, pathname: string): void {
+function serveStatic(res: ServerResponse, pathname: string, publicDir: string): void {
   const relative = normalize(pathname === "/" ? "index.html" : pathname.slice(1));
-  const full = join(PUBLIC_DIR, relative);
-  if (relative.startsWith("..") || !full.startsWith(PUBLIC_DIR) || full.includes(`${sep}.`)) throw new NotFound("not found");
+  const full = join(publicDir, relative);
+  if (relative.startsWith("..") || !full.startsWith(publicDir) || full.includes(`${sep}.`)) throw new NotFound("not found");
+  if (relative === "index.html" && !existsSync(full)) {
+    // Fail visibly: without a build there is no interface to serve, and the API alone is not one.
+    return send(res, 503, "The front end has not been built. Start the interface with `npm run ui`, which builds it.\n", "text/plain; charset=utf-8");
+  }
   if (!existsSync(full) || !statSync(full).isFile()) throw new NotFound("not found");
   send(res, 200, readFileSync(full), STATIC_TYPES[extname(full)] ?? "application/octet-stream");
 }
 
-async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function route(req: IncomingMessage, res: ServerResponse, publicDir: string): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const method = req.method ?? "GET";
   const parts = url.pathname.split("/").filter((p) => p !== "").map(decodeURIComponent);
@@ -83,7 +91,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
 
   if (parts[0] !== "api") {
     if (method !== "GET" && method !== "HEAD") throw new BadRequest("method not allowed");
-    return serveStatic(res, url.pathname);
+    return serveStatic(res, url.pathname, publicDir);
   }
 
   const [, resource, a, b, ...rest] = parts;
@@ -130,9 +138,10 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   throw new NotFound(`no such endpoint: ${method} ${url.pathname}`);
 }
 
-export function createApp(): Server {
+export function createApp(options: { publicDir?: string } = {}): Server {
+  const publicDir = options.publicDir === undefined ? DIST_DIR : resolve(options.publicDir) + sep;
   return createServer((req, res) => {
-    route(req, res).catch((error: unknown) => {
+    route(req, res, publicDir).catch((error: unknown) => {
       const status = error instanceof NotFound ? 404 : error instanceof BadRequest ? 400 : 500;
       if (status === 500) console.error(error);
       if (!res.headersSent) sendJson(res, status, { error: (error as Error).message });
@@ -141,7 +150,7 @@ export function createApp(): Server {
   });
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+export function listen(): void {
   const port = Number(process.env.TENRIC_UI_PORT ?? 4173);
   const host = process.env.TENRIC_UI_HOST ?? "127.0.0.1";
   createApp().listen(port, host, () => {
@@ -149,3 +158,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log("Reads spec/, runs/, fixtures/ and docs/ from this checkout. Stores nothing. Stop with Ctrl-C.");
   });
 }
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) listen();

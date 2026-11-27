@@ -3,7 +3,7 @@
 // produces and compare it with the command line, then exercise the refusals.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -390,25 +390,66 @@ describe("runs made by the runtime", () => {
 
 describe("interface text", () => {
   it("has every string in both languages and leaves the verifier's vocabulary untranslated", async () => {
-    const { KEYS } = (await import("../ui/public/js/i18n.js" as string)) as { KEYS: { en: string[]; zh: string[] } };
+    const { KEYS } = (await import("../ui/web/src/lib/strings.js" as string)) as { KEYS: { en: string[]; zh: string[] } };
     expect([...KEYS.zh].sort()).toEqual([...KEYS.en].sort());
-    const source = readFileSync(join(REPO_ROOT, "ui/public/js/i18n.js"), "utf8");
+    const source = readFileSync(join(REPO_ROOT, "ui/web/src/lib/strings.js"), "utf8");
     for (const word of ["已接受", "已拒绝", "已验证", "验证正确"]) expect(source).not.toContain(word);
   });
-  it("serves every file the page loads, under a policy that allows no inline script or style", async () => {
-    const page = await call("/");
-    expect(page.status).toBe(200);
-    expect(String(page.headers["content-security-policy"])).toContain("default-src 'self'");
-    expect(page.text).not.toMatch(/<style|style=|<script(?![^>]*\bsrc=)/);
-    const loaded = [...page.text.matchAll(/(?:src|href)="(\/[^"]+)"/g)].map((match) => match[1]!);
-    expect(loaded).toEqual(expect.arrayContaining(["/style.css", "/js/theme.js", "/js/app.js"]));
-    for (const path of loaded) expect((await call(path)).status, path).toBe(200);
+
+  it("serves a built page and its assets under a policy that allows no inline script or style", async () => {
+    // The front end is built by `npm run ui`, not by `npm run verify`, so this serves a stand-in build with the same shape.
+    const dist = mkdtempSync(join(tmpdir(), "tenric-ui-dist-"));
+    mkdirSync(join(dist, "assets"));
+    writeFileSync(join(dist, "index.html"), '<!doctype html><script type="module" src="/assets/index-x.js"></script><link rel="stylesheet" href="/assets/index-x.css"><link rel="icon" href="/favicon.svg">');
+    writeFileSync(join(dist, "assets", "index-x.js"), "export {};\n");
+    writeFileSync(join(dist, "assets", "index-x.css"), "body{}\n");
+    writeFileSync(join(dist, "assets", "font.woff2"), "");
+    writeFileSync(join(dist, "favicon.svg"), "<svg/>");
+    const app = createApp({ publicDir: dist });
+    await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+    const port = (app.address() as { port: number }).port;
+    try {
+      const get = async (path: string) => fetch(`http://localhost:${port}${path}`);
+      const page = await get("/");
+      expect(page.status).toBe(200);
+      expect(page.headers.get("content-security-policy")).toContain("default-src 'self'");
+      expect(page.headers.get("content-security-policy")).not.toContain("unsafe-inline");
+      expect((await get("/assets/index-x.js")).headers.get("content-type")).toContain("text/javascript");
+      expect((await get("/assets/font.woff2")).headers.get("content-type")).toBe("font/woff2");
+      expect((await get("/assets/../../package.json")).status).not.toBe(200);
+      expect((await get("/missing.js")).status).toBe(404);
+    } finally {
+      await new Promise((resolve) => app.close(resolve));
+      rmSync(dist, { recursive: true, force: true });
+    }
   });
 
-  it("builds the page from text nodes: no front-end file parses a string as HTML", () => {
-    const root = join(REPO_ROOT, "ui/public/js");
-    const files = [...readdirSync(root), ...readdirSync(join(root, "views")).map((name) => `views/${name}`)].filter((name) => name.endsWith(".js"));
-    expect(files.length).toBeGreaterThan(10);
-    for (const file of files) expect(readFileSync(join(root, file), "utf8"), file).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  it("says so, instead of serving nothing, when the front end has not been built", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "tenric-ui-empty-"));
+    const app = createApp({ publicDir: empty });
+    await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+    try {
+      const page = await fetch(`http://localhost:${(app.address() as { port: number }).port}/`);
+      expect(page.status).toBe(503);
+      expect(await page.text()).toContain("npm run ui");
+    } finally {
+      await new Promise((resolve) => app.close(resolve));
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it("the page's sources load nothing inline and never parse a string as HTML", () => {
+    const html = readFileSync(join(REPO_ROOT, "ui/web/index.html"), "utf8");
+    expect(html).not.toMatch(/<style|style=|<script(?![^>]*\bsrc=)/);
+    const root = join(REPO_ROOT, "ui/web/src");
+    const files = (readdirSync(root, { recursive: true }) as string[]).filter((name) => /\.(tsx?|js)$/.test(name));
+    expect(files.length).toBeGreaterThan(30);
+    for (const file of files) expect(readFileSync(join(root, file), "utf8"), file).not.toMatch(/dangerouslySetInnerHTML|innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(/);
+  });
+
+  it("pins every front-end dependency to an exact version", () => {
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "ui/web/package.json"), "utf8"));
+    for (const [name, version] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })) expect(version, name).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(existsSync(join(REPO_ROOT, "ui/web/package-lock.json"))).toBe(true);
   });
 });
