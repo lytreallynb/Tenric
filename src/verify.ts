@@ -97,6 +97,8 @@ export function verify(options: VerifyOptions): VerdictRecord {
   const count = (kind: string) => passed.filter((r) => r.verifiability === kind).length;
   const summary = { mandatory: mandatory.length, passed: passed.length, machine: count("machine"), empirical: count("empirical"), human: count("human") };
   const artifactPath = join(runDir, "artifact.json");
+  // Forward slashes in the record on every platform, like every other path a tool writes.
+  const shownPath = artifactPath.replaceAll("\\", "/");
   return {
     record_schema: "0.1.0",
     verdict,
@@ -106,7 +108,7 @@ export function verify(options: VerifyOptions): VerdictRecord {
       `(${summary.machine} machine, ${summary.empirical} empirical, ${summary.human} human)`,
     issued_at: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
     contract: { id: contract.id, version: contract.version, path: contractPath, sha256: bound.sha256, registered: true, registry_sha256: bound.registry.sha256 },
-    artifact: { path: artifactPath, sha256: existsSync(artifactPath) ? sha256File(artifactPath) : null },
+    artifact: { path: shownPath, sha256: existsSync(artifactPath) ? sha256File(artifactPath) : null },
     verifier: verifierIdentity(),
     reproduction: options.reproduce ? { requested: true, task_sha256: taskSha! } : { requested: false },
     capabilities: { required: contract.applicability?.requires_capabilities ?? [], established: [] },
