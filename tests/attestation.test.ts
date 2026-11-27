@@ -127,7 +127,7 @@ describe("a signed run", () => {
     const record = verify({ runDir: signedRun(), contractPath: REPO_ROOT + CONTRACT_040, repo: REPO_ROOT, reproduce, collectorsPath: TRUSTED });
     expect(r012(record).status).toBe("pass");
     expect(record.verdict).toBe("accepted");
-    expect(record.statement).toMatch(/; evidence collected by runtime@test \(attested\)$/);
+    expect(record.statement).toMatch(/; signed with the key of trusted collector runtime@test$/);
     expect(record.collector).toMatchObject({ attested: true, id: "runtime@test", key_id: trusted.entry.key_id });
     expect(record.capabilities.established).toEqual(["independent-collector", "content-hashing"]);
     expect(record.collectors.sha256).toBe(sha256File(TRUSTED));
@@ -187,7 +187,7 @@ describe("the CLI: collector-key, attest, verify --collectors", () => {
     const signed = tenric(["attest", dir, "--contract", CONTRACT_040, "--key", join(keys, "collector.key"), "--collector-id", "ci@test"]);
     expect(signed.code).toBe(0);
     const out = tenric(["verify", dir, "--contract", CONTRACT_040, "--collectors", join(keys, "collectors.json"), "--repo", ".", "--reproduce", "--task", TASK]);
-    expect(out.out).toMatch(/^verdict: accepted under contract research\.experiment-report version 0\.4\.0: .*; evidence collected by ci@test \(attested\)$/m);
+    expect(out.out).toMatch(/^verdict: accepted under contract research\.experiment-report version 0\.4\.0: .*; signed with the key of trusted collector ci@test$/m);
     expect(out.code).toBe(0);
     const unsigned = tenric(["verify", tamperedCopy(() => {}), "--contract", CONTRACT_040, "--collectors", join(keys, "collectors.json"), "--repo", "."]);
     expect(unsigned.code).toBe(1);
