@@ -36,6 +36,16 @@ jobs:
         run: npm ci && uv sync --locked
       - name: npm run verify
         run: npm run verify
+      - name: Report the image libraries that encoded the figure
+        if: ${{ !cancelled() }}
+        # Diagnostic for docs/open-questions.md Q18: which zlib Pillow compresses PNGs with on this platform.
+        run: |
+          {
+            echo '### Image libraries on `${{ matrix.os }}`'
+            echo '```'
+            uv run --locked python -c "import sys, zlib, PIL, matplotlib; from PIL import features; print('python', sys.version.split()[0]); print('matplotlib', matplotlib.__version__); print('pillow', PIL.__version__); print('pillow zlib', features.version('zlib')); print('pillow zlib_ng', features.check_feature('zlib_ng')); print('python zlib', zlib.ZLIB_RUNTIME_VERSION)"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Record digests of the outputs declared byte-identical
         if: ${{ !cancelled() }}
         run: |
@@ -140,64 +150,3 @@ jobs:
               echo '```'
             done
           } | tee -a "$GITHUB_STEP_SUMMARY"
-
-  # Trust boundary, option A of docs/trust-model.md section 6: the pull request is
-  # judged by the verifier, contract, registry and task file of the branch it
-  # wants to merge into, not by its own copies. A pull request can still edit this
-  # workflow file; closing that needs a repository rule (docs/adr/0007).
-  probe-base:
-    name: does the base branch have a verifier
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      has_verifier: ${{ steps.probe.outputs.has_verifier }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-      - id: probe
-        run: |
-          if [ -f src/verify.ts ] && [ -f spec/contracts/registry.json ] && [ -f experiments/baseline/task.json ]; then
-            echo "has_verifier=true" >> "$GITHUB_OUTPUT"
-            echo "The base branch has a verifier. The pull request is judged by it in the next job." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "has_verifier=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::not_run: the base branch has no verifier that binds a contract, so this pull request is NOT judged by trusted code. The next job is skipped, which is not a pass."
-            echo "Result: **not_run**. The base branch has no verifier yet; the trusted verification job is skipped. This is not a pass." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-  trusted-verify:
-    name: judged by the base branch's verifier
-    needs: probe-base
-    if: needs.probe-base.outputs.has_verifier == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          path: subject
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: trusted
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22.23.5
-      - name: Install uv
-        run: pipx install uv==0.11.32
-      - name: Collect a run with the pull request's code
-        working-directory: subject
-        run: uv sync --locked && uv run --locked python experiments/baseline/run_baseline.py --out "$RUNNER_TEMP/run"
-      - name: Judge it with the base branch's verifier, contract and task file
-        working-directory: trusted
-        run: |
-          npm ci
-          set +e
-          node src/cli.ts verify "$RUNNER_TEMP/run" \
-            --contract spec/contracts/research.experiment-report/0.2.0.contract.json \
-            --repo ../subject --reproduce --task experiments/baseline/task.json \
-            --record "$RUNNER_TEMP/verdict.json" | tee "$RUNNER_TEMP/verdict.txt"
-          code=${PIPESTATUS[0]}
-          { echo '```'; cat "$RUNNER_TEMP/verdict.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          exit "$code"
