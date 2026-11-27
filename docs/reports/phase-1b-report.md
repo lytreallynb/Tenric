@@ -26,7 +26,7 @@ This responds to the engineering review of 2026-11-25, in its order of priority.
 | PNG differs across platforms, cause unknown | Diagnosed: same pixels, different compression | section 5 |
 | Trust boundary undefined; CI runs the PR's own verifier | Boundary written down; CI job that uses the base commit's verifier | ADR-0007, `.github/workflows/verify.yml` |
 
-Size: `src/` went from about 320 to about 690 lines of TypeScript, tests from 60 to 108.
+Size: `src/` went from 321 to 751 lines of TypeScript, tests from 60 to 108.
 
 ## 2. `npm run verify` at 8b3ace6
 
