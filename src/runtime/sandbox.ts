@@ -1,7 +1,7 @@
 // Isolation for code the runtime did not write: the agent backend and the experiment.
 //
 // Linux only, with util-linux's `unshare` and `setpriv` and unprivileged user namespaces;
-// no other dependency (docs/adr/0012-namespace-sandbox-for-producer-code.md).
+// no other dependency (docs/adr/0013-namespace-sandbox-for-producer-code.md).
 // Elsewhere the sandbox is reported unavailable and callers decide: the experiment then
 // runs without it and says so, and an agent backend is refused unless the operator
 // overrides that explicitly.

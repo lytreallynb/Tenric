@@ -20,7 +20,7 @@ The default root is `runs/`, which is not committed.
 | `tenric/reexecution.json` | runtime | The runtime's own second execution, compared per output and per metric. Informational; the verifier does not read it. |
 | `tenric/backend/` | adapter | The backend's own account: `prompt.txt`, `events.jsonl` (raw stream), `final_message.txt`, `result.json`, `stderr.txt`. Claims, not evidence. |
 | `tenric/execution.stdout.txt`, `tenric/execution.stderr.txt` | collector | Captured from the experiment process |
-| `tenric/attestation.json` | runtime, with its own key | The signed collector record (ADR-0011 format). Present only when the backend and the experiment ran in an enforced sandbox (ADR-0012). |
+| `tenric/attestation.json` | runtime, with its own key | The signed collector record (ADR-0011 format). Present only when the backend and the experiment ran in an enforced sandbox (ADR-0013). |
 
 A run directory written by the baseline script has no `tenric/` directory and is still a valid input to `tenric verify`.
 

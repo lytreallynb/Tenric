@@ -1,4 +1,4 @@
-# ADR-0012: Producer code runs in a Linux namespace sandbox, and the runtime signs only runs it confined
+# ADR-0013: Producer code runs in a Linux namespace sandbox, and the runtime signs only runs it confined
 
 Status: implemented and tested; awaiting owner approval. Date: 2026-11-27.
 
