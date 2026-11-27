@@ -1,0 +1,16 @@
+{
+  "collect": [
+    "uv",
+    "run",
+    "--locked",
+    "python",
+    "experiments/baseline/run_baseline.py",
+    "--config",
+    "{config}",
+    "--out",
+    "{out}"
+  ],
+  "experiment_id": "baseline-digits-logreg",
+  "task_schema": "0.1.0",
+  "timeout_seconds": 900
+}
