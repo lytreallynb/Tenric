@@ -63,8 +63,6 @@ function verdictPanel(run, outcome, reverify) {
   const again = h("button", { class: "btn", onclick: () => act(again, contractOf()) }, icon("refresh", 14), t("verify_again"));
   const reproduce = task ? h("button", { class: "btn primary", onclick: () => act(reproduce, { ...contractOf(), reproduce_task: task }, t("reexecuting")) }, icon("new", 12), t("verify_reexecute")) : null;
   const flags = record.reproduction?.requested ? ` --reproduce --task ${task ?? "<task>"}` : "";
-  const required = record.capabilities?.required ?? [];
-  const established = new Set(record.capabilities?.established ?? []);
   const jump = (id) => (event) => {
     event.preventDefault();
     const target = document.getElementById(`req-${id}`);
@@ -104,10 +102,86 @@ function verdictPanel(run, outcome, reverify) {
       ]),
       record.verifier.dirty ? frag(h("div", { class: "spacer" }), notice("warn", t("verifier_dirty_title"), t("verifier_dirty_body"))) : null)),
 
-    required.length > 0 ? section(t("capabilities_title"), null,
-      notice("warn", t("capabilities_note_title"), t("capabilities_note_body"),
-        h("div", { class: "row" }, required.map((c) => h("span", { class: "row" }, h("code", {}, c), established.has(c) ? badge("established", "pass") : badge("not established", "neutral")))))) : null,
+    reviewSection(run, record),
+    trustSection(run, record),
   );
+}
+
+// ------------------------------------------------- human review and trust
+
+/** The place where a person's judgement belongs. Recording one is not built: its format is open question Q10. */
+function reviewSection(run, record) {
+  const human = record.results.filter((r) => r.verifiability === "human" || r.kind === "human-review");
+  if (human.length === 0) return null;
+  const checklist = run.trust?.review_checklist ?? [];
+  const questions = checklist.length > 0 ? checklist : human.map((r) => ({ requirement: r.requirement, question: r.title }));
+  return section(t("review_title"), t("review_sub"), h("div", { class: "review" },
+    h("ol", { class: "review-list" }, questions.map((q) => {
+      const result = record.results.find((r) => r.requirement === q.requirement);
+      return h("li", {},
+        h("div", { class: "row" }, h("code", {}, q.requirement), result ? badge(result.status) : null, result ? tag(result.level) : null),
+        h("div", { class: "q" }, q.question),
+        h("div", { class: "hint" }, result?.level === "advisory" ? t("review_advisory") : t("review_mandatory")));
+    })),
+    h("div", { class: "review-slot" },
+      h("div", { class: "glyph" }, icon("pen", 18)),
+      h("div", {}, h("b", {}, `${t("not_yet_available")}: ${t("review_record")}`), h("p", { class: "hint" }, t("review_record_body"))),
+      h("a", { class: "btn small", href: "#/docs/docs/open-questions.md" }, t("open_question"), " Q10"))));
+}
+
+function boundaryRow(glyph, title, state, stateClass, body) {
+  return h("div", { class: "boundary-row" },
+    h("div", { class: `glyph ${stateClass}` }, icon(glyph, 16)),
+    h("div", { class: "grow" }, h("div", { class: "row" }, h("b", {}, title), state), body ? h("div", { class: "hint" }, body) : null));
+}
+
+function isolationPart(label, part) {
+  if (!part || typeof part !== "object") return h("div", { class: "kv-line" }, h("span", { class: "muted" }, label), h("span", { class: "faint" }, t("not_recorded")));
+  return h("div", { class: "kv-line" }, h("span", { class: "muted" }, label),
+    h("span", { class: "row" }, h("code", {}, part.mechanism ?? "?"), badge(part.enforced === true ? "enforced" : "not enforced", part.enforced === true ? "pass" : "neutral"),
+      part.network ? tag(`network: ${part.network}`, "mono") : null,
+      Array.isArray(part.writable_paths) && part.writable_paths.length > 0 ? tag(`writable: ${part.writable_paths.join(", ")}`, "mono") : null),
+    part.detail ? h("span", { class: "hint" }, part.detail) : null);
+}
+
+/**
+ * The boundary between the producer and the evidence, as the run's records
+ * state it: capabilities, isolation, attestation and the runtime's integrity
+ * check. Nothing here is inferred; a missing record says so.
+ */
+function trustSection(run, record) {
+  const trust = run.trust ?? {};
+  const required = record.capabilities?.required ?? [];
+  const established = new Set(record.capabilities?.established ?? []);
+  const sandbox = trust.backend_sandbox;
+  const rows = [];
+
+  rows.push(boundaryRow("shield", t("tb_capabilities"),
+    required.length === 0 ? h("span", { class: "faint" }, "—") : h("span", { class: "row" }, required.map((c) => h("span", { class: "row tight" }, h("code", {}, c), established.has(c) ? badge("established", "pass") : badge("not established", "neutral")))),
+    required.length > 0 && established.size < required.length ? "neutral" : "ok", required.length > 0 ? t("capabilities_note_body") : null));
+
+  rows.push(trust.isolation
+    ? boundaryRow("system", t("tb_isolation"), null, trust.isolation.execution?.enforced && trust.isolation.backend?.enforced ? "ok" : "neutral",
+      h("div", { class: "stack tight" }, isolationPart(t("tb_isolation_backend"), trust.isolation.backend), isolationPart(t("tb_isolation_execution"), trust.isolation.execution)))
+    : boundaryRow("system", t("tb_isolation"), h("span", { class: "badge none plain" }, t("not_yet_available")), "neutral",
+      frag(t("tb_isolation_missing"), sandbox ? frag(" ", h("span", { class: "row tight inline" }, badge("backend"), ` ${trust.backend ?? ""} sandbox: `, badge(sandbox.supported ? "supported" : "not supported", sandbox.supported ? "pass" : "neutral")), sandbox.guarantee ? h("div", { class: "quote" }, sandbox.guarantee) : null) : null)));
+
+  const att = trust.attestation;
+  rows.push(att
+    ? boundaryRow("pen", t("tb_attestation"), h("span", { class: "row" }, h("code", {}, att.format ?? "?"), att.verified_by ? badge(`verified by ${att.verified_by}`, "pass") : badge("not checked by the verifier", "neutral")), att.verified_by ? "ok" : "neutral",
+      kv([[t("tb_signer"), att.signer ?? "—"], ["subject sha256", frag(sha(att.subject_sha256, true), att.subject_sha256 && run.summary.artifact_sha256 ? frag(" ", att.subject_sha256 === run.summary.artifact_sha256 ? badge("matches artifact.json", "pass") : badge("differs from artifact.json", "fail")) : null)], ["key id", sha(att.key_id)], [t("file"), att.path ? h("code", {}, att.path) : "—"]]))
+    : boundaryRow("pen", t("tb_attestation"), h("span", { class: "badge none plain" }, t("not_yet_available")), "neutral", t("tb_attestation_missing")));
+
+  rows.push(trust.integrity
+    ? boundaryRow("check", t("tb_integrity"), trust.integrity.violations && trust.integrity.violations.length === 0 ? badge("no violations", "pass") : badge(`${trust.integrity.violations?.length ?? "?"} violations`, "fail"),
+      trust.integrity.violations?.length === 0 ? "ok" : "bad",
+      frag(t("tb_integrity_body"), trust.trusted_base_sha256 ? frag(" trusted base ", sha(trust.trusted_base_sha256)) : null,
+        trust.integrity.violations?.length > 0 ? h("ul", {}, trust.integrity.violations.map((v) => h("li", { class: "mono wrap-any" }, typeof v === "string" ? v : JSON.stringify(v)))) : null))
+    : boundaryRow("check", t("tb_integrity"), h("span", { class: "badge none plain" }, trust.made_by === "runtime" ? t("not_recorded") : t("not_applicable")), "neutral", trust.made_by === "runtime" ? null : t("tb_integrity_baseline")));
+
+  const node = section(t("tb_title"), t("tb_sub"), h("div", { class: "boundary-box" }, rows));
+  node.id = "tb";
+  return node;
 }
 
 // ------------------------------------------------------- evidence and claims
@@ -220,6 +294,22 @@ export function eventList(events) {
   }));
 }
 
+/** The runtime's recorded phases as bars on one time axis. Durations are the runtime's own measurements. */
+function phaseChart(phases) {
+  const starts = phases.map((p) => Date.parse(p.started_at)).filter((n) => !Number.isNaN(n));
+  const origin = Math.min(...starts);
+  const end = Math.max(...phases.map((p) => Date.parse(p.started_at) + (p.seconds ?? 0) * 1000).filter((n) => !Number.isNaN(n)));
+  const span = Math.max(end - origin, 1);
+  return h("div", { class: "panel gantt" }, h("div", { class: "row" }, h("h3", {}, t("phase_timeline")), h("span", { class: "hint" }, `${num(span / 1000)} s`)),
+    phases.map((p) => {
+      const bar = h("i", { class: p.status === "ok" ? "ok" : "bad", title: `${p.name}: ${num(p.seconds)} s` });
+      const start = Date.parse(p.started_at);
+      bar.style.marginLeft = `${Number.isNaN(start) ? 0 : (100 * (start - origin)) / span}%`;
+      bar.style.width = `max(3px, ${(100 * (p.seconds ?? 0) * 1000) / span}%)`;
+      return h("div", { class: "gantt-row" }, h("code", {}, p.name), h("div", { class: "track" }, bar), h("span", { class: "mono muted" }, `${num(p.seconds)} s`), badge(p.status ?? "unknown", "plain"));
+    }));
+}
+
 function runtimePanel(run) {
   const { runtime, events } = run;
   if (!runtime.run && !runtime.plan && !events.available) return notAvailable(t("runtime_records"), t("runtime_records_missing"));
@@ -231,10 +321,10 @@ function runtimePanel(run) {
       [t("task"), r.task ? frag(h("code", {}, r.task.id), " ", r.task.title ?? "") : "—"],
       [t("backend"), r.backend ? frag(h("code", {}, r.backend.name), " ", tag(r.backend.kind), r.backend.outcome ? frag(" ", badge(r.backend.outcome, "plain"), ` ${num(r.backend.seconds)} s`) : null) : "—"],
       [t("contract"), r.contract ? frag(h("code", {}, `${r.contract.id} ${r.contract.version}`), " ", sha(r.contract.sha256)) : "—"],
-      [t("backend_self_report"), r.backend?.self_report && Object.keys(r.backend.self_report).length > 0 ? frag(badge("backend"), " ", h("code", { class: "wrap-any" }, JSON.stringify(r.backend.self_report)), h("div", { class: "hint" }, t("self_report_hint"))) : "—"],
+      [t("backend_self_report"), r.backend?.self_report && Object.keys(r.backend.self_report).length > 0 ? h("div", {}, h("div", { class: "row tight chips-wrap" }, badge("backend"), Object.entries(r.backend.self_report).map(([k, v]) => h("span", { class: "tag mono" }, `${k}: ${v === null ? "null" : typeof v === "object" ? JSON.stringify(v) : v}`))), h("div", { class: "hint" }, t("self_report_hint"))) : "—"],
       [t("created"), time(r.created_at)], [t("finished"), time(r.finished_at)],
     ])),
-    Array.isArray(r.phases) ? table([t("phase"), t("status"), t("started"), `${t("seconds")}#`], r.phases.map((p) => h("tr", {}, td(h("code", {}, p.name)), td(badge(p.status ?? "unknown", "plain")), td(time(p.started_at)), td(num(p.seconds), "num")))) : null) : null,
+    Array.isArray(r.phases) ? phaseChart(r.phases) : null) : null,
 
     plan ? frag(h("h2", { class: "sub" }, t("compiled_plan")),
       plan.predicted ? notice("info", t("predicted"), frag(badge(plan.predicted.best_verdict ?? "unknown"), " ", (plan.predicted.blocking_unavailable ?? []).length > 0 ? `${t("blocking_unavailable")}: ${plan.predicted.blocking_unavailable.join(", ")}` : "")) : null,
@@ -282,6 +372,24 @@ function runtimePanel(run) {
 
 // --------------------------------------------------------------------- page
 
+/** A one-line summary of the trust boundary section, as the run's records state it. */
+function trustFact(run) {
+  const trust = run.trust ?? {};
+  const isolation = trust.isolation
+    ? (trust.isolation.backend?.enforced && trust.isolation.execution?.enforced ? badge("enforced", "pass") : badge("not enforced", "neutral"))
+    : h("span", { class: "badge none plain" }, t("not_recorded"));
+  const attestation = trust.attestation ? badge("signed", "pass") : h("span", { class: "badge none plain" }, t("unsigned"));
+  const link = h("a", { href: "#tb", onclick: (event) => {
+    event.preventDefault();
+    const go = () => document.getElementById("tb")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!document.getElementById("tb")) document.querySelector('.tabs button[data-id="verdict"]')?.click();
+    requestAnimationFrame(go);
+  } }, t("tb_title"));
+  return h("div", {}, h("div", { class: "label" }, link),
+    h("div", { class: "v" }, h("span", { class: "row tight" }, h("span", { class: "muted small" }, t("tb_isolation")), isolation)),
+    h("div", { class: "l row tight" }, h("span", {}, t("tb_attestation")), attestation));
+}
+
 export async function runDetail({ args: [id, tab] }) {
   const run = await api.run(id);
   let outcome = await api.verify(id);
@@ -322,8 +430,9 @@ export async function runDetail({ args: [id, tab] }) {
       verdictFact,
       fact(t("execution"), frag(s.status ? badge(s.status) : "—", s.exit_code !== undefined ? h("span", { class: "muted mono" }, `exit ${s.exit_code}`) : null), frag(num(s.runtime_seconds), " s · ", time(s.started_at))),
       fact(t("source_revision"), revision(s.source), s.runtime ? frag(t("lifecycle_status"), " ", s.runtime.status ?? "unknown") : s.source?.kind ?? "—"),
-      fact(t("data_class"), dataClass(s.data_class), frag("artifact ", sha(s.artifact_sha256)))),
-    failure ? frag(h("div", { class: "spacer" }), notice("bad", `${t("failure_record")}: ${failure.reason}`, h("pre", { class: "wrap term" }, failure.stderr_tail ?? ""))) : null,
+      fact(t("data_class"), dataClass(s.data_class), frag("artifact ", sha(s.artifact_sha256))),
+      trustFact(run)),
+    failure ? frag(h("div", { class: "spacer" }), notice("bad", `${t("failure_record")}: ${failure.reason}`, failure.stderr_tail ? h("pre", { class: "wrap term" }, failure.stderr_tail) : null)) : null,
     (s.metrics ?? []).length > 0 ? h("div", { class: "metrics" }, s.metrics.map((m) => h("div", { class: "metric" }, h("div", { class: "n" }, num(m.value)), h("div", { class: "l" }, m.name)))) : null,
     container,
   );

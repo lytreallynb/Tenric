@@ -2,6 +2,21 @@ import { api } from "../api.js";
 import { t } from "../i18n.js";
 import { badge, frag, h, json, notAvailable, notice, pageHead, section, table, tag, td } from "../ui.js";
 
+/** What each backend says it can do, one row per capability. Hover or focus a cell for the backend's own wording. */
+function capabilityMatrix(backends) {
+  const withCaps = backends.filter((b) => b.capabilities && Object.keys(b.capabilities).length > 0);
+  if (withCaps.length === 0) return null;
+  const names = [...new Set(withCaps.flatMap((b) => Object.keys(b.capabilities)))].sort();
+  return frag(h("div", { class: "spacer" }), h("h3", {}, t("capabilities_declared")), h("p", { class: "hint" }, t("capabilities_declared_hint")),
+    table([t("capability"), ...withCaps.map((b) => b.name)], names.map((name) => h("tr", {},
+      td(h("code", {}, name), "nowrap"),
+      withCaps.map((b) => {
+        const cap = b.capabilities[name];
+        if (!cap) return td(h("span", { class: "faint" }, "—"));
+        return td(h("div", { class: "cap" }, badge(cap.supported === false ? "not_available" : "available", "plain"), cap.guarantee ? h("div", { class: "hint" }, cap.guarantee) : null));
+      })))));
+}
+
 export async function system() {
   const data = await api.system();
   const runtime = data.components.find((c) => c.id === "runtime");
@@ -15,12 +30,10 @@ export async function system() {
     section(t("backends"), t("backend_claims_body"), frag(
       runtime.state === "not_available" ? notAvailable(t("component_runtime"), t("runtime_missing")) : null,
       runtime.state === "partial" ? notice("bad", t("runtime_error"), runtime.evidence) : null,
-      table([t("backend"), t("kind"), t("state"), t("capabilities"), t("notes")], data.backends.map((b) => h("tr", {},
-        td(h("code", {}, b.name)), td(tag(b.kind)), td(badge(b.available ? "available" : "not_available", "plain")),
-        td(b.capabilities ? h("div", { class: "stack caps" }, Object.entries(b.capabilities).map(([name, cap]) => h("div", {},
-          badge(cap && cap.supported === false ? "not_available" : "available", "plain"), " ", h("code", {}, name),
-          cap && cap.guarantee ? h("div", { class: "hint" }, cap.guarantee) : null))) : h("span", { class: "muted" }, "—")),
-        td(h("span", { class: "muted" }, b.note ?? ""))))))),
+      table([t("backend"), t("kind"), t("state"), t("notes")], data.backends.map((b) => h("tr", {},
+        td(h("code", {}, b.name), "nowrap"), td(tag(b.kind)), td(badge(b.available ? "available" : "not_available", "plain")),
+        td(h("span", { class: "muted" }, b.note ?? ""))))),
+      capabilityMatrix(data.backends))),
 
     section(t("tasks"), null, data.tasks.length === 0
       ? notAvailable(t("tasks"), t("tasks_missing"))

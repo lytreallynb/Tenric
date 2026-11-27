@@ -16,7 +16,7 @@ import { startRun, getJob } from "../ui/server/jobs.ts";
 import { createApp } from "../ui/server/server.ts";
 
 const CONTRACT_ID = "research.experiment-report";
-const SCRATCH = ["ui-test-runtime", "ui-test-html", "ui-test-broken", "ui-test-escape", "ui-test-stub", "ui-test-taken"];
+const SCRATCH = ["ui-test-runtime", "ui-test-html", "ui-test-broken", "ui-test-escape", "ui-test-stub", "ui-test-taken", "ui-test-cancel"];
 let server: Server;
 let port: number;
 
@@ -105,6 +105,8 @@ describe("no verdict is issued where none may be", () => {
     const { json } = await call(`/api/runs/${encodeURIComponent(fixture.id)}/verify`);
     expect(json.issued).toBe(false);
     expect(json.record).toBeUndefined();
+    const trust = (await call(`/api/runs/${encodeURIComponent(fixture.id)}`)).json.trust;
+    expect(trust).toMatchObject({ made_by: "fixture", isolation: null, attestation: null, integrity: null, backend_sandbox: null });
   });
 
   it("an unknown contract version is a 404, not a default", async () => {
@@ -311,6 +313,19 @@ describe("starting a run", () => {
     await expect.poll(() => getJob(missing.id).state, { timeout: 10_000 }).toBe("spawn_failed");
     expect(getJob(missing.id).exit_code).toBeNull();
   });
+
+  it("cancels a running job through the API, and refuses to cancel one that is not running", async () => {
+    const job = await startRun({ run_id: "ui-test-cancel" }, [process.execPath, "-e", "console.log('waiting'); setTimeout(() => {}, 60_000)"]);
+    await expect.poll(() => getJob(job.id).log, { timeout: 10_000 }).toContain("waiting");
+    const cancel = await post(`/api/jobs/${job.id}/cancel`, {});
+    expect(cancel.status).toBe(202);
+    expect(cancel.json.cancel_requested_at).toEqual(expect.any(String));
+    await expect.poll(() => getJob(job.id).state, { timeout: 10_000 }).toBe("cancelled");
+    expect(getJob(job.id).log).toContain("cancel requested");
+    expect((await post(`/api/jobs/${job.id}/cancel`, {})).status).toBe(400);
+    expect((await post("/api/jobs/no-such-job/cancel", {})).status).toBe(404);
+    expect((await post(`/api/jobs/${job.id}/cancel`, {}, { Origin: "http://evil.example" })).json.error).toMatch(/cross-origin/);
+  });
 });
 
 describe("runs made by the runtime", () => {
@@ -349,6 +364,13 @@ describe("runs made by the runtime", () => {
     expect(run.runtime.plan.plan_schema).toBeDefined();
     expect(run.files.some((f: any) => f.path.includes(".git/"))).toBe(false);
     expect([0, 1, 3]).toContain(job.exit_code);
+    // The trust boundary is read from the run's records as they stand: nothing the runtime did not write is filled in.
+    expect(run.trust.made_by).toBe("runtime");
+    expect(run.trust.backend_sandbox).toEqual(run.runtime.plan.backend.capabilities.sandbox);
+    expect(run.trust.isolation).toBe(recorded.isolation ?? null);
+    expect(run.trust.attestation).toBe(recorded.attestation ?? null);
+    expect(run.trust.integrity.violations).toEqual(job.events.find((e: any) => e.type === "integrity.checked").violations);
+    expect(run.trust.review_checklist).toEqual(run.runtime.plan.review_checklist);
 
     // Verified again now, with the run's own re-execution task: the verifier must reach what the runtime recorded.
     const again = (await post("/api/runs/ui-test-runtime/verify", { reproduce_task: run.reproduction_tasks[0].path })).json;

@@ -1,7 +1,7 @@
-// Starts runs. The only producer that exists today is the Phase 0 baseline
-// collector, so that is the only thing this can start. Jobs live in memory:
-// the durable record of a run is its directory, not this list.
-import { spawn } from "node:child_process";
+// Starts and stops runs: the Phase 0 baseline collector, or the runtime's
+// command line with one of its backends. Jobs live in memory: the durable
+// record of a run is its directory, not this list.
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJson, REPO_ROOT } from "./core.ts";
@@ -20,15 +20,20 @@ export interface Job {
   task?: string;
   command: string[];
   config_path: string;
-  state: "running" | "exited" | "spawn_failed";
+  state: "running" | "exited" | "cancelled" | "spawn_failed";
   exit_code: number | null;
   started_at: string;
   finished_at: string | null;
+  /** When someone asked to stop it. The run directory says what the producer did with that request. */
+  cancel_requested_at: string | null;
   /** stdout and stderr of the collector, interleaved, truncated to the last 64 KiB. */
   log: string;
 }
 
 const jobs: Job[] = [];
+const children = new Map<string, ChildProcess>();
+/** How long a process has to stop after SIGTERM before it is killed. */
+const GRACE_MS = 15_000;
 
 export function listJobs(): Job[] {
   return [...jobs].reverse();
@@ -70,7 +75,13 @@ export interface StartRequest {
 
 function launch(job: Job): Job {
   const append = (chunk: Buffer) => { job.log = (job.log + chunk.toString("utf8")).slice(-LOG_LIMIT); };
-  const child = spawn(job.command[0]!, job.command.slice(1), { cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"] });
+  // The baseline collector does not handle signals, so it gets its own process
+  // group and the whole group is stopped. The runtime handles SIGTERM itself:
+  // it stops its own children and records the run as cancelled.
+  const ownGroup = job.backend === "baseline-script" && process.platform !== "win32";
+  const child = spawn(job.command[0]!, job.command.slice(1), { cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], detached: ownGroup });
+  if (ownGroup) (child as ChildProcess & { ownGroup?: boolean }).ownGroup = true;
+  children.set(job.id, child);
   child.stdout.on("data", append);
   child.stderr.on("data", append);
   child.on("error", (error) => {
@@ -79,8 +90,9 @@ function launch(job: Job): Job {
     job.log += `could not start the process: ${error.message}\n`;
   });
   child.on("close", (code) => {
+    children.delete(job.id);
     if (job.state !== "running") return;
-    job.state = "exited";
+    job.state = job.cancel_requested_at ? "cancelled" : "exited";
     job.exit_code = code;
     job.finished_at = new Date().toISOString();
   });
@@ -91,7 +103,7 @@ function launch(job: Job): Job {
 function newJob(fields: Pick<Job, "run_id" | "backend" | "command" | "config_path"> & { task?: string }): Job {
   return {
     id: `job-${Date.now().toString(36)}-${jobs.length + 1}`, ...fields,
-    state: "running", exit_code: null, started_at: new Date().toISOString(), finished_at: null, log: "",
+    state: "running", exit_code: null, started_at: new Date().toISOString(), finished_at: null, cancel_requested_at: null, log: "",
   };
 }
 
@@ -142,4 +154,32 @@ export async function startRun(request: StartRequest, uvCommand: string[] = ["uv
   }
 
   return launch(newJob({ run_id: runId, backend, command: [...uvCommand, ...args], config_path: configPath }));
+}
+
+function signal(child: ChildProcess, name: NodeJS.Signals): void {
+  try {
+    if ((child as ChildProcess & { ownGroup?: boolean }).ownGroup && child.pid) process.kill(-child.pid, name);
+    else child.kill(name);
+  } catch { /* already gone */ }
+}
+
+/**
+ * Asks a running job to stop with SIGTERM. Returns at once; the job reaches
+ * state "cancelled" when its process has exited, and whatever the run wrote
+ * stays on disk. The runtime handles SIGTERM by stopping its own process trees
+ * and writing run.json with status cancelled, so it is never killed: a SIGKILL
+ * would leave that record unfinished. Only the baseline collector, which does
+ * not handle signals, is killed if it is still running after a grace period.
+ */
+export function cancelJob(id: string): Job {
+  const job = getJob(id);
+  const child = children.get(id);
+  if (job.state !== "running" || !child) throw new BadRequest(`job ${id} is not running`);
+  if (!job.cancel_requested_at) {
+    job.cancel_requested_at = new Date().toISOString();
+    job.log = (job.log + (job.log === "" || job.log.endsWith("\n") ? "" : "\n") + "[interface] cancel requested: sent SIGTERM\n").slice(-LOG_LIMIT);
+    signal(child, "SIGTERM");
+    if (job.backend === "baseline-script") setTimeout(() => { if (children.get(id) === child) { job.log += "[interface] still running after the grace period: sent SIGKILL\n"; signal(child, "SIGKILL"); } }, GRACE_MS).unref();
+  }
+  return job;
 }

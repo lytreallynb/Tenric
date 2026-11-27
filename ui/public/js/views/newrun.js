@@ -52,22 +52,37 @@ export async function newRun() {
     value: x.path, name: x.id, side: x.fixture ? badge("fixture") : null, desc: x.title ?? x.path,
   })), system.tasks[0]?.path, () => planBox.replaceChildren());
 
+  const jobsBox = h("div", {});
+  const drawJobs = (list) => jobsBox.replaceChildren(
+      table([t("job"), t("run"), t("backend"), t("state"), t("started")], list.map((j) => h("tr", {},
+        td(h("code", {}, j.id)), td(h("a", { class: "primary-cell", href: `#/runs/${encodeURIComponent(j.run_id)}` }, j.run_id)), td(h("code", {}, j.backend)),
+        td(badge(jobState(j), jobTone(j))), td(time(j.started_at)))),
+        { empty: empty(null, t("no_jobs"), null, { compact: true }) }));
+  const refreshJobs = () => api.jobs().then(drawJobs, () => {});
   let startedAt = 0;
+  const jobState = (job) => (job.state === "running" && job.cancel_requested_at ? "stopping" : job.state === "exited" ? `exited ${job.exit_code}` : job.state);
+  const jobTone = (job) => (job.state === "running" ? "partial running" : job.state === "cancelled" ? "neutral" : job.exit_code === 0 ? "pass" : job.state === "exited" ? "neutral" : "fail");
   const drawJob = (job) => {
     const running = job.state === "running";
+    const cancel = running ? h("button", { class: "btn danger", disabled: Boolean(job.cancel_requested_at), onclick: async () => {
+      cancel.disabled = true;
+      try { drawJob(await api.cancelJob(job.id)); } catch (error) { cancel.disabled = false; message.replaceChildren(notice("bad", t("could_not_cancel"), error.message)); }
+    } }, icon("x", 13), job.cancel_requested_at ? t("stopping") : t("cancel_run")) : null;
     const seconds = Math.max(0, Math.round(((running ? Date.now() : Date.parse(job.finished_at ?? "") || Date.now()) - Date.parse(job.started_at)) / 1000));
     jobBox.replaceChildren(section(`${t("job")} ${job.id}`, null, h("div", { class: "panel stack" },
       h("div", { class: "job-head" },
-        badge(running ? "running" : job.state === "exited" ? `exited ${job.exit_code}` : job.state, running ? "partial running" : job.exit_code === 0 ? "pass" : job.state === "exited" ? "neutral" : "fail"),
+        badge(jobState(job), jobTone(job)),
         h("span", { class: "big" }, `runs/${job.run_id}`),
         running ? h("span", { class: "hint row" }, h("span", { class: "spinner" }), `${seconds} s ${t("elapsed")}`) : null,
         job.backend !== "baseline-script" && job.state === "exited" ? h("span", { class: "row hint" }, `${t("runtime_exit_means")}: `, badge(RUNTIME_EXIT[job.exit_code] ?? "unknown", job.exit_code === 2 ? "none" : "")) : null,
         h("span", { class: "grow" }),
+        cancel,
         running ? null : h("a", { class: "btn primary", href: `#/runs/${encodeURIComponent(job.run_id)}` }, t("open_run"), icon("arrow", 14))),
       running ? h("div", { class: "progress" }, h("i")) : null,
       kv([[t("command"), h("code", { class: "wrap-any" }, job.command.join(" "))], [t("started"), time(job.started_at)]]),
       (job.events ?? []).length > 0 ? h("div", {}, h("h3", {}, t("event_log")), h("p", { class: "hint" }, t("event_log_hint")), eventList(job.events)) : null,
       h("div", {}, h("h3", {}, t("process_output")), h("div", { class: "spacer" }), h("pre", { class: "wrap term" }, job.log || t("no_output_yet"))),
+      job.cancel_requested_at ? h("p", { class: "hint" }, t("cancel_hint")) : null,
       job.state === "exited" && job.exit_code !== 0 ? h("p", { class: "hint" }, t("nonzero_hint")) : null)));
   };
   const follow = (job) => {
@@ -77,7 +92,7 @@ export async function newRun() {
       const next = await api.job(job.id).catch(() => null);
       if (!next) return;
       drawJob(next);
-      if (next.state !== "running") { clearInterval(timer); timers.delete(timer); startButton.disabled = false; }
+      if (next.state !== "running") { clearInterval(timer); timers.delete(timer); startButton.disabled = false; refreshJobs(); }
     }, 1000);
     timers.add(timer);
   };
@@ -96,6 +111,7 @@ export async function newRun() {
       }
       startedAt = Date.now();
       follow(await api.startRun(body));
+      refreshJobs();
     } catch (error) {
       startButton.disabled = false;
       message.replaceChildren(h("div", { class: "spacer" }), notice("bad", t("could_not_start"), error.message));
@@ -108,6 +124,7 @@ export async function newRun() {
     planBox.replaceChildren(h("div", { class: "spacer" }), result.ok ? h("details", { open: true }, h("summary", {}, t("compiled_plan")), json(result.plan)) : notice("bad", t("no_plan"), h("pre", { class: "wrap" }, result.error)));
   };
 
+  drawJobs(jobs);
   const running = jobs.find((j) => j.state === "running");
   if (running) { startButton.disabled = true; follow(running); }
 
@@ -136,10 +153,6 @@ export async function newRun() {
       h("label", { class: "field" }, h("span", {}, t("run_id")), runId, h("span", { class: "hint" }, t("run_id_hint"))),
       startButton, message)),
     jobBox,
-    section(t("jobs_this_session"), t("jobs_hint"),
-      table([t("job"), t("run"), t("backend"), t("state"), t("started")], jobs.map((j) => h("tr", {},
-        td(h("code", {}, j.id)), td(h("a", { class: "primary-cell", href: `#/runs/${encodeURIComponent(j.run_id)}` }, j.run_id)), td(h("code", {}, j.backend)),
-        td(badge(j.state === "exited" ? `exited ${j.exit_code}` : j.state, j.state === "running" ? "partial running" : j.exit_code === 0 ? "pass" : "fail")), td(time(j.started_at)))),
-        { empty: empty(null, t("no_jobs"), null, { compact: true }) })),
+    section(t("jobs_this_session"), t("jobs_hint"), jobsBox),
   );
 }

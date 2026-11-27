@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   BadRequest, compareRuns, contractDiff, getContract, getDoc, getRun, listContracts, listDocs, listRuns, NotFound, runFile, verifyRun,
 } from "./data.ts";
-import { defaultConfig, followJob, listJobs, startRun } from "./jobs.ts";
+import { cancelJob, defaultConfig, followJob, listJobs, startRun } from "./jobs.ts";
 import { compilePreview, systemStatus } from "./system.ts";
 
 const PUBLIC_DIR = fileURLToPath(new URL("../public/", import.meta.url));
@@ -114,6 +114,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   }
   if (method === "POST") {
     if (resource === "runs" && !a) return sendJson(res, 202, await startRun((await readBody(req)) as Record<string, unknown>));
+    if (resource === "jobs" && a && b === "cancel" && rest.length === 0) { await readBody(req); return sendJson(res, 202, cancelJob(a)); }
     if (resource === "compile" && !a) {
       const body = (await readBody(req)) as Record<string, unknown>;
       return sendJson(res, 200, await compilePreview(body.task, body.backend));

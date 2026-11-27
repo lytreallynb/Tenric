@@ -45,7 +45,7 @@ function requirementRows(requirements) {
     td(frag(r.title, r.rationale ? h("div", { class: "hint" }, r.rationale) : null)),
     td(badge(r.level, r.level === "mandatory" ? "neutral" : "none")),
     td(tag(r.verifiability)),
-    td(frag(h("code", {}, r.check?.kind ?? "—"), r.check?.params ? h("div", { class: "hint mono wrap-any" }, JSON.stringify(r.check.params)) : null)),
+    td(frag(h("code", {}, r.check?.kind ?? "—"), r.check?.params ? h("dl", { class: "params" }, Object.entries(r.check.params).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, typeof v === "string" ? v : JSON.stringify(v))])) : null)),
     td(r.validator_available === undefined ? "—" : badge(r.validator_available ? "available" : "not_available", "plain"))));
 }
 

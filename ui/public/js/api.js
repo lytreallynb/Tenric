@@ -23,6 +23,7 @@ export const api = {
   doc: (path) => request(`/api/doc?${q({ path })}`),
   jobs: () => request("/api/jobs"),
   job: (id) => request(`/api/jobs/${seg(id)}`),
+  cancelJob: (id) => post(`/api/jobs/${seg(id)}/cancel`),
   runDefaults: () => request("/api/run-defaults"),
   startRun: (body) => post("/api/runs", body),
   compile: (body) => post("/api/compile", body),

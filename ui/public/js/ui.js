@@ -111,6 +111,9 @@ export const skeleton = () => h("div", { class: "skeleton", "aria-busy": "true",
 
 export function table(headers, rows, options = {}) {
   if (rows.length === 0) return h("div", { class: "table-wrap" }, options.empty instanceof Node ? options.empty : empty(null, options.empty ?? t("nothing_here"), null, { compact: true }));
+  // Each cell carries its column's name, so that a narrow screen can show a row as a card.
+  const labels = headers.map((head) => (head instanceof Node ? head.textContent : head.replace(/#$/, "")));
+  for (const row of rows) [...row.children].forEach((cell, index) => { if (labels[index]) cell.dataset.label = labels[index]; });
   return h("div", { class: "table-wrap" }, h("table", {},
     h("thead", {}, h("tr", {}, headers.map((head) => (head instanceof Node ? head : h("th", { class: head.endsWith("#") ? "num" : "" }, head.replace(/#$/, "")))))),
     h("tbody", {}, rows)));

@@ -394,8 +394,33 @@ function readOptionalJson(run: Located, name: string): Json | null {
   }
 }
 
+/**
+ * What the run's own records say about the boundary between the producer and
+ * the evidence: isolation, attestation and the runtime's after-the-fact
+ * integrity check. Read as recorded, never inferred. A key the runtime has not
+ * written is null, and the interface shows it as not yet available.
+ */
+function trustBoundary(run: Located, runJson: Json | null, plan: Json | null, events: ReturnType<typeof readEvents>): Json {
+  const backendCaps = plan?.backend?.capabilities ?? null;
+  const integrity = [...(events.events as Json[])].reverse().find((e) => e?.type === "integrity.checked") ?? null;
+  return {
+    made_by: runJson ? "runtime" : run.origin === "fixture" ? "fixture" : "baseline-script",
+    backend: plan?.backend?.name ?? null,
+    isolation: runJson?.isolation ?? null,
+    backend_sandbox: backendCaps?.sandbox ?? null,
+    attestation: runJson?.attestation ?? null,
+    integrity: integrity ? { ts: integrity.ts ?? null, violations: Array.isArray(integrity.violations) ? integrity.violations : null } : null,
+    trusted_base_sha256: runJson?.trusted_base_sha256 ?? null,
+    review_checklist: Array.isArray(plan?.review_checklist) ? plan.review_checklist : null,
+    review_notes: Array.isArray(runJson?.review_notes) ? runJson.review_notes : null,
+  };
+}
+
 export function getRun(id: string) {
   const run = locate(id);
+  const runJson = readOptionalJson(run, "run.json") as Json | null;
+  const plan = readOptionalJson(run, "plan.json") as Json | null;
+  const events = readEvents(run);
   const { artifact, error } = readArtifact(run.artifactPath);
   const reportPath = join(run.dir, "report.md");
   return {
@@ -408,10 +433,11 @@ export function getRun(id: string) {
     contracts: applicableContracts(artifact).map((c) => ({ id: c.id, version: c.version, path: c.path })),
     default_contract: (() => { const c = defaultContract(run, artifact); return c ? { id: c.id, version: c.version } : null; })(),
     reproduction_tasks: reproductionTasksFor(run, artifact),
-    events: readEvents(run),
+    events,
+    trust: trustBoundary(run, runJson, plan, events),
     runtime: {
-      run: readOptionalJson(run, "run.json"),
-      plan: readOptionalJson(run, "plan.json"),
+      run: runJson,
+      plan,
       verification: readOptionalJson(run, "verification.json"),
       reexecution: readOptionalJson(run, "reexecution.json"),
     },

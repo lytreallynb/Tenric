@@ -40,11 +40,11 @@ export async function runList() {
           td(verdictCell(run)),
           td(run.verification ? frag(h("span", { class: "mono" }, `${run.verification.passed} / ${run.verification.total}`), h("span", { class: "faint" }, ` · ${run.verification.version}`)) : "—", "nowrap"),
           td(run.verification ? (run.verification.blocking.length === 0 ? h("span", { class: "faint" }, "—") : h("div", { class: "tags" }, run.verification.blocking.map((b) => h("span", { class: "tag mono" }, b)))) : h("span", { class: "faint", title: run.no_verdict ?? "" }, "—")),
-          td(run.runtime?.recorded_verdict ? badge(run.runtime.recorded_verdict) : h("span", { class: "faint" }, "—")),
+          td(run.runtime?.recorded_verdict ? badge(run.runtime.recorded_verdict) : h("span", { class: "faint" }, "—"), run.runtime?.recorded_verdict ? "" : "opt"),
           td(run.origin === "fixture" ? h("span", { class: "faint" }, "—") : h("code", {}, run.runtime?.backend ?? "baseline-script"), "nowrap"),
           td(run.status ? frag(badge(run.status), typeof run.runtime_seconds === "number" ? h("span", { class: "mono faint" }, ` ${num(run.runtime_seconds)} s`) : null) : "—", "nowrap"),
           td(time(run.started_at), "nowrap"),
-          td(num(run.metrics?.find((m) => m.name === "test_accuracy")?.value), "num"));
+          td(num(run.metrics?.find((m) => m.name === "test_accuracy")?.value), "num opt"));
       }), { empty: runs.length === 0
         ? empty(t("empty_runs_title"), t("no_runs"), h("a", { class: "btn primary", href: "#/new" }, icon("new", 13), t("nav_new")))
         : empty(t("no_match_title"), t("no_match_body"), null, { icon: "search", compact: true }) }));
