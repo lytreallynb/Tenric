@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { scrubbedEnvironment } from "../src/reproduce.ts";
 import { readJson, REPO_ROOT } from "../src/spec.ts";
 import { PreconditionError, verify } from "../src/verify.ts";
-import { CONTRACT, CONTRACT_010, editArtifact, inflateAccuracy, rehash, RUN_A, SLOW, tamperedCopy, TASK, tempDir } from "./helpers.ts";
+import { runChecks } from "../src/checks.ts";
+import { loadContract } from "../src/spec.ts";
+import { CONTRACT, CONTRACT_010, CONTRACT_030, editArtifact, inflateAccuracy, rehash, RUN_A, SLOW, tamperedCopy, TASK, tempDir } from "./helpers.ts";
 
 const reproduce = { taskPath: REPO_ROOT + TASK };
 const judge = (runDir: string, contract = CONTRACT, task = reproduce) =>
@@ -123,6 +125,47 @@ describe("re-execution: a validator that cannot decide reports error, never pass
     expect(() => judge(RUN_A, CONTRACT, { taskPath: "no-such-task.json" })).toThrow(PreconditionError);
     const notATask = judge(RUN_A, CONTRACT, { taskPath: REPO_ROOT + "package.json" });
     expect(r008(notATask)).toMatchObject({ status: "error", detail: expect.stringContaining("invalid task file") });
+  });
+});
+
+describe("re-execution: per-metric tolerance is opt-in and declared in the contract (0.3.0)", () => {
+  const r008With = (dir: string, rules: unknown) => {
+    const contract = structuredClone(loadContract(REPO_ROOT + CONTRACT_030));
+    contract.requirements.find((r) => r.id === "R-008")!.check.params!.metric_rules = rules;
+    return runChecks(contract, dir, { repo: REPO_ROOT, reproduce }).find((r) => r.requirement === "R-008")!;
+  };
+
+  it("the baseline is accepted under 0.3.0, and none of its metrics is compared with a tolerance", () => {
+    const record = judge(RUN_A, CONTRACT_030);
+    expect(record.verdict).toBe("accepted");
+    expect(r008(record).detail).not.toContain("tolerance");
+  }, SLOW);
+
+  it("0.3.0 still rejects an inflated accuracy: its rule covers only names ending in _seconds", () => {
+    const record = judge(tamperedCopy((dir) => inflateAccuracy(dir, 0.9999)), CONTRACT_030);
+    expect(r008(record).detail).toContain("metric test_accuracy: artifact reports 0.9999, re-execution gives 0.96");
+    expect(record.verdict).toBe("rejected");
+  }, SLOW);
+
+  it("a rule lets a matching metric differ within its bound, says so in the result, and no further", () => {
+    const run = tamperedCopy((dir) => inflateAccuracy(dir, 0.97));
+    const loose = r008With(run, [{ pattern: "test_acc*", abs_tolerance: 0.01 }]);
+    // The edited file is still caught by the byte comparison; only the metric comparison is relaxed.
+    expect(loose.detail).toBe("metrics.json: bytes differ from the re-execution");
+    const tight = r008With(run, [{ pattern: "test_acc*", abs_tolerance: 0.001 }]);
+    expect(tight.detail).toContain('metric test_accuracy: artifact reports 0.97, re-execution gives 0.9644444444444444 (contract rule {"pattern":"test_acc*","abs_tolerance":0.001})');
+    const relative = r008With(run, [{ pattern: "*", rel_tolerance: 0.001 }]);
+    expect(relative.detail).toContain("metric test_accuracy: artifact reports 0.97");
+
+    const named = r008With(RUN_A, [{ pattern: "test_*", rel_tolerance: 0.1 }]);
+    expect(named).toMatchObject({ status: "pass" });
+    expect(named.detail).toMatch(/; compared within a contract tolerance instead of exactly: test_accuracy, test_macro_f1$/);
+  }, SLOW);
+
+  it("errors on rules it cannot apply, rather than ignoring them", () => {
+    for (const rules of ["*_seconds", [{ pattern: "*_seconds" }], [{ pattern: "x", abs_tolerance: 1, rel_tolerance: 1 }], [{ pattern: "x", abs_tolerance: -1 }], [{ pattern: "x", abs_tolerance: 1, skip: true }]]) {
+      expect(r008With(RUN_A, rules), JSON.stringify(rules)).toMatchObject({ status: "error", detail: expect.stringContaining("unusable metric_rules") });
+    }
   });
 });
 
