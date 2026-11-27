@@ -4,6 +4,7 @@
 // spent, partitions requirements by who can supply them, plans the validators
 // and predicts the best reachable verdict, and derives the producer's
 // instructions from that partition. It does not call a model.
+import { sandboxAvailability } from "./sandbox.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { IMPLEMENTED_CHECK_KINDS } from "../checks.ts";
@@ -99,6 +100,8 @@ const KINDS: Record<string, { supplied_by: Supplier; obligations: string[] | ((p
       ];
     },
   },
+  // The runtime signs its own collector record; the producer can neither help nor forge it.
+  "collector-attestation": { supplied_by: "collector", obligations: [] },
   "human-review": {
     supplied_by: "human",
     obligations: ["A person will read your findings and limitations against the evidence. State only what the metrics and figures support, and state at least one real limitation."],
@@ -253,6 +256,10 @@ export function compile(options: CompileOptions): { plan: Plan; task: Task; cont
     const demanded = requirement.check.kind === "required-content" ? requirement.check.params?.data_class : undefined;
     if (requirement.level === "mandatory" && typeof demanded === "string" && demanded !== data_class) {
       known_failures.push(`${requirement.id}: the contract requires data_class ${demanded}, the task is ${data_class}`);
+    }
+    // The runtime signs only runs whose code ran in an enforced sandbox.
+    if (requirement.level === "mandatory" && requirement.check.kind === "collector-attestation" && !sandboxAvailability().available) {
+      known_failures.push(`${requirement.id}: no sandbox can be built here (${sandboxAvailability().detail}), so the runtime will not sign the collector record`);
     }
   }
   const blocking_unavailable = requirements.filter((r) => r.level === "mandatory" && !r.validator.available).map((r) => r.id);

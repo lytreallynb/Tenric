@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { REPO_ROOT } from "../../src/spec.ts";
 import { ClaudeCodeBackend, ScriptBackend, listBackends, type BackendDescription } from "../../src/runtime/backends.ts";
 import { compile, PreconditionError } from "../../src/runtime/compiler.ts";
+import { sandboxAvailability } from "../../src/runtime/sandbox.ts";
 import { readJson, sha256File, stableJson } from "../../src/runtime/util.ts";
 
 const TASK = REPO_ROOT + "fixtures/tasks/coin-flips.task.json";
@@ -142,8 +143,8 @@ describe("backends", () => {
     expect(backends.map((b) => b.name)).toEqual(["script", "claude-code"]);
     for (const backend of backends) {
       for (const capability of Object.values(backend.capabilities)) expect(capability.guarantee.length).toBeGreaterThan(0);
-      // No adapter claims a sandbox it does not enforce.
-      expect(backend.capabilities.sandbox!.supported).toBe(false);
+      // No adapter claims a sandbox it does not enforce: only the agent backend runs code, and only where the sandbox can be built.
+      expect(backend.capabilities.sandbox!.supported).toBe(backend.kind === "agent" && sandboxAvailability().available);
     }
   });
 });

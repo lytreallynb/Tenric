@@ -2,8 +2,10 @@
 // never executes the experiment for the record and never writes the artifact.
 // Nothing an adapter returns is evidence: exit status and files are observed
 // by the runtime, and self_report is the backend's account of itself.
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { join, sep } from "node:path";
+import { dirname, isAbsolute, join, sep } from "node:path";
+import { certificatePaths, pythonPaths, sandboxAvailability, sandboxed, type IsolationRecord } from "./sandbox.ts";
 import type { Task } from "./schemas.ts";
 import { runProcess, writeJson } from "./util.ts";
 
@@ -31,6 +33,10 @@ export interface BackendRunRequest {
   model?: string;
   signal?: AbortSignal;
   onEvent?: (event: BackendEvent) => void;
+  /** Paths the backend must not be able to read, such as the runtime's signing key. */
+  hidden: string[];
+  /** Refuse to run code-executing backends without an enforced sandbox. */
+  requireSandbox: boolean;
 }
 export interface BackendResult {
   outcome: "completed" | "failed" | "timeout" | "cancelled";
@@ -39,6 +45,8 @@ export interface BackendResult {
   detail?: string;
   /** Backend-reported. Never evidence. */
   self_report: Record<string, unknown>;
+  /** How the backend's process was confined, as set up by the runtime. Null when no process ran. */
+  isolation: IsolationRecord | null;
 }
 export interface Backend {
   describe(): BackendDescription;
@@ -67,7 +75,7 @@ export class ScriptBackend implements Backend {
         "event-stream": no("None."),
         "cancellation": yes("The copy is synchronous and short; cancellation takes effect after it."),
         "cost-reporting": no("No cost."),
-        "sandbox": no("The copy runs in the runtime's own process."),
+        "sandbox": no("Runs no code: the copy is done by the runtime's own process. The experiment it copies is executed by the runtime, in the runtime's sandbox."),
       },
     };
   }
@@ -76,7 +84,7 @@ export class ScriptBackend implements Backend {
     const started = performance.now();
     const done = (outcome: BackendResult["outcome"], detail?: string): BackendResult => ({
       outcome, exit_code: null, seconds: Math.round(performance.now() - started) / 1000,
-      ...(detail ? { detail } : {}), self_report: {},
+      ...(detail ? { detail } : {}), self_report: {}, isolation: null,
     });
     let source = this.producerDir;
     if (!source) {
@@ -111,6 +119,18 @@ export class ClaudeCodeBackend implements Backend {
     this.command = options.command ?? ["claude"];
   }
 
+  /** What the CLI needs to start inside the sandbox: its installation, any file named in the command, its configuration, certificates, and paths the operator adds in TENRIC_SANDBOX_READONLY. */
+  readonlyPaths(): string[] {
+    const [executable, ...leading] = this.command;
+    const paths = [installRoot(executable!), ...leading.filter((a) => isAbsolute(a) && existsSync(a)), ...certificatePaths()];
+    // The CLI starts with an empty home directory inside the sandbox. Configuration it must see is the operator's
+    // choice: CLAUDE_CONFIG_DIR when set, and anything listed in TENRIC_SANDBOX_READONLY.
+    const configDir = process.env.CLAUDE_CONFIG_DIR;
+    if (configDir && existsSync(configDir)) paths.push(configDir);
+    for (const extra of (process.env.TENRIC_SANDBOX_READONLY ?? "").split(":")) if (extra && isAbsolute(extra)) paths.push(extra);
+    return [...new Set(paths.filter((p): p is string => !!p))];
+  }
+
   describe(): BackendDescription {
     return {
       name: "claude-code",
@@ -123,7 +143,7 @@ export class ClaudeCodeBackend implements Backend {
         "cancellation": yes("The runtime kills the CLI's process tree. Work already written stays in the workspace."),
         "cost-reporting": yes("total_cost_usd in the CLI's result event. Backend-reported and not checked."),
         "structured-output": no("The CLI has --json-schema; this adapter does not use it, because the deliverable is files in a workspace."),
-        "sandbox": no("None enforced by this adapter. Bash can reach anything the runtime's user can. The runtime detects changes to the contract, the schema and the Tenric working tree after the fact; it does not prevent them."),
+        "sandbox": { supported: sandboxAvailability().available, guarantee: "On Linux the CLI and everything it starts run in the runtime's namespace sandbox: the workspace is the only writable host path; the Tenric repository, the Python environment, the CLI's own installation and configuration are read-only; nothing else of the host's filesystem or processes is visible. Network is not restricted, because the CLI needs it to reach its model. Without a sandbox the runtime refuses this backend unless the operator overrides it, and then signs nothing. supported is true only where the sandbox can be built on this machine." },
       },
     };
   }
@@ -136,7 +156,7 @@ export class ClaudeCodeBackend implements Backend {
       "",
       `- Your working directory is the workspace. Write every file there and nowhere else.`,
       `- To run Python with the locked packages, use exactly: uv run --locked --project ${JSON.stringify(request.repoRoot)} python <script> <arguments>`,
-      `- Do not read or change anything under ${request.repoRoot}; it is not part of the task.`,
+      `- ${request.repoRoot} is read-only and not part of the task. Do not try to change it.`,
       "- You cannot ask questions. Make reasonable choices, state them under limitations, and finish.",
       "",
     ].join("\n");
@@ -180,7 +200,22 @@ export class ClaudeCodeBackend implements Backend {
       }
     };
 
-    const done = await runProcess(executable!, args, {
+    // Inside the sandbox a missing executable would surface as an exit code; find it here so the failure says what it is.
+    // The sandbox mounts the real installation, not the symbolic link on PATH that may point at it.
+    const resolved = resolveExecutable(executable!);
+    if (!resolved) {
+      writeJson(join(request.recordDir, "result.json"), { process: null, error: "not found" });
+      return { outcome: "failed", exit_code: null, seconds: 0, detail: `could not start ${executable}: not found`, self_report: {}, isolation: null };
+    }
+    const wrapped = sandboxed([resolved, ...args], {
+      readonly: [...this.readonlyPaths(), ...pythonPaths(request.repoRoot)],
+      writable: [request.workspace], cwd: request.workspace, network: true, hidden: request.hidden,
+    });
+    if (!wrapped.isolation.enforced && request.requireSandbox) {
+      writeJson(join(request.recordDir, "result.json"), { process: null, refused: wrapped.isolation.detail });
+      return { outcome: "failed", exit_code: null, seconds: 0, detail: `refused to run without a sandbox (${wrapped.isolation.detail})`, self_report: {}, isolation: wrapped.isolation };
+    }
+    const done = await runProcess(wrapped.command, wrapped.args, {
       cwd: request.workspace,
       timeoutSeconds: request.limits.timeoutSeconds,
       signal: request.signal,
@@ -205,7 +240,7 @@ export class ClaudeCodeBackend implements Backend {
     writeFileSync(join(request.recordDir, "final_message.txt"), typeof result?.result === "string" ? result.result + "\n" : "");
     writeJson(join(request.recordDir, "result.json"), { process: done, self_report });
 
-    const base = { exit_code: done.exitCode, seconds: done.seconds, self_report };
+    const base = { exit_code: done.exitCode, seconds: done.seconds, self_report, isolation: wrapped.isolation };
     if (done.outcome === "timeout") return { ...base, outcome: "timeout", detail: `no result after ${request.limits.timeoutSeconds} s; process tree killed` };
     if (done.outcome === "cancelled") return { ...base, outcome: "cancelled", detail: "cancelled by the runtime" };
     if (done.outcome === "spawn_error") return { ...base, outcome: "failed", detail: `could not start ${executable}: ${done.error}` };
@@ -215,6 +250,23 @@ export class ClaudeCodeBackend implements Backend {
     if (result.is_error === true) return { ...base, outcome: "failed", detail: `CLI reported an error result: ${clip(result.result ?? result.subtype, 200)}` };
     return { ...base, outcome: "completed" };
   }
+}
+
+/** The installation directory of an executable on PATH or given by path: its real location, two levels up from the binary. */
+/** The real path of an executable given by name or path, after following symbolic links. */
+function resolveExecutable(executable: string): string | undefined {
+  try {
+    const found = isAbsolute(executable) ? executable : execFileSync("sh", ["-c", 'command -v "$1"', "sh", executable], { encoding: "utf8" }).trim();
+    return found && existsSync(found) ? realpathSync(found) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The installation directory of an executable: two levels up from its real binary. */
+function installRoot(executable: string): string | undefined {
+  const found = resolveExecutable(executable);
+  return found ? dirname(dirname(found)) : undefined;
 }
 
 const registry: Record<string, () => Backend> = {

@@ -1,7 +1,7 @@
 // A stand-in for the Claude Code CLI, used only to test the adapter's own
 // logic (argument passing, stream parsing, fail-closed outcomes, timeouts).
 // It is not a model and results obtained with it say nothing about any model.
-import { cpSync, readdirSync } from "node:fs";
+import { cpSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +19,17 @@ if (mode === "no-result") process.exit(0);
 if (mode === "error-result") {
   emit({ type: "result", subtype: "error_max_budget_usd", is_error: true, result: "budget exceeded", total_cost_usd: 0, num_turns: 1 });
   process.exit(0);
+}
+if (mode === "snoop") {
+  // Tries what a misbehaving agent would try, and writes down what happened. The test reads the record.
+  const attempt = (action) => { try { action(); return "succeeded"; } catch (error) { return `failed: ${error.code ?? error.message}`; } };
+  const repo = join(dirname(fileURLToPath(import.meta.url)), "../..");
+  writeFileSync(join(process.cwd(), "snoop.json"), JSON.stringify({
+    read_key: attempt(() => readFileSync(join(process.env.TENRIC_KEY_DIR ?? "/nonexistent", "collector-key.pem"))),
+    write_repo: attempt(() => writeFileSync(join(repo, "snoop-was-here"), "x")),
+    write_contract: attempt(() => writeFileSync(join(repo, "spec/contracts/registry.json"), "{}")),
+    visible_processes: readdirSync("/proc").filter((n) => /^\d+$/.test(n)).length,
+  }));
 }
 emit({ type: "assistant", message: { content: [{ type: "text", text: `prompt had ${prompt.length} characters` }, { type: "tool_use", name: "Write", input: { file_path: "experiment.py" } }] } });
 process.stdout.write("this line is not JSON\n");

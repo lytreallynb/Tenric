@@ -12,12 +12,16 @@ import { ClaudeCodeBackend, ScriptBackend, type Backend, type BackendRunRequest 
 import { PreconditionError } from "../../src/runtime/compiler.ts";
 import { listRuns, readRun } from "../../src/runtime/runs.ts";
 import { runTask, type RunSummary } from "../../src/runtime/runtime.ts";
+import { sandboxAvailability } from "../../src/runtime/sandbox.ts";
 import { readJson, sha256File } from "../../src/runtime/util.ts";
 
 const TASK = REPO_ROOT + "fixtures/tasks/coin-flips.task.json";
 const PRODUCER = REPO_ROOT + "fixtures/producers/coin-flips";
 const CONTRACT = "spec/contracts/research.experiment-report/0.1.0.contract.json";
 const LONG = 120_000;
+const SANDBOX = sandboxAvailability().available;
+// Tests sign with a throwaway key, never with the machine's own.
+process.env.TENRIC_KEY_DIR = mkdtempSync(join(tmpdir(), "tenric-test-keys-"));
 
 const scratch = (prefix: string) => mkdtempSync(join(tmpdir(), prefix));
 function producer(mutate: (dir: string) => void): ScriptBackend {
@@ -38,9 +42,9 @@ function taskWith(mutate: (task: any) => void): string {
   return path;
 }
 interface Outcome { run: RunSummary; dir: string; artifact: any; results: Record<string, string>; events: any[] }
-async function run(backend: Backend, options: { taskPath?: string; signal?: AbortSignal; repoRoot?: string } = {}): Promise<Outcome> {
+async function run(backend: Backend, options: { taskPath?: string; signal?: AbortSignal; repoRoot?: string; allowUnsandboxed?: boolean } = {}): Promise<Outcome> {
   const dir = join(scratch("tenric-runs-"), "run");
-  const summary = await runTask({ taskPath: options.taskPath ?? TASK, backend, runDir: dir, signal: options.signal, repoRoot: options.repoRoot });
+  const summary = await runTask({ taskPath: options.taskPath ?? TASK, backend, runDir: dir, signal: options.signal, repoRoot: options.repoRoot, allowUnsandboxed: options.allowUnsandboxed });
   const read = (path: string) => (existsSync(join(dir, path)) ? readJson(join(dir, path)) : undefined) as any;
   return {
     run: summary, dir, artifact: read("artifact.json"),
@@ -64,11 +68,13 @@ describe("a run with a well-behaved producer", () => {
   it("completes, and every phase is recorded", () => {
     expect(good.run).toMatchObject({ run_schema: "0.1.0", status: "completed", status_detail: null, data_class: "fixture" });
     expect(good.run.phases.map((p) => [p.name, p.status])).toEqual([
-      ["compile", "ok"], ["workspace", "ok"], ["backend", "ok"], ["integrity", "ok"], ["commit", "ok"], ["execute", "ok"], ["reexecute", "ok"], ["verify", "ok"],
+      ["compile", "ok"], ["workspace", "ok"], ["backend", "ok"], ["integrity", "ok"], ["commit", "ok"], ["execute", "ok"], ["reexecute", "ok"],
+      ...(SANDBOX ? [["attest", "ok"]] : []), ["verify", "ok"],
     ]);
     expect(good.events.map((e) => e.type)).toEqual([
       "run.started", "workspace.prepared", "backend.started", "backend.finished", "integrity.checked", "workspace.committed",
-      "execution.started", "execution.finished", "artifact.written", "reexecution.finished", "verification.finished", "run.finished",
+      "execution.started", "execution.finished", "artifact.written", "reexecution.finished",
+      SANDBOX ? "attestation.signed" : "attestation.refused", "verification.finished", "run.finished",
     ]);
     expect(good.events.map((e) => e.seq)).toEqual(good.events.map((_, i) => i + 1));
     expect(new Set(good.events.map((e) => e.source))).toEqual(new Set(["runtime", "collector"]));
@@ -112,6 +118,8 @@ describe("a run with a well-behaved producer", () => {
     const done = spawnSync(process.execPath, [
       "src/tenric.ts", "verify", good.dir, "--contract", CONTRACT, "--repo", join(good.dir, "workspace"),
       "--reproduce", "--task", join(good.dir, "tenric/reproduce.task.json"),
+      // The runtime judged with its own key trusted; the command line must be given the same collectors file.
+      ...(good.run.attestation ? ["--collectors", join(process.env.TENRIC_KEY_DIR!, "collectors.json")] : []),
     ], { cwd: REPO_ROOT, encoding: "utf8" });
     expect(done.stdout).toContain(`verdict: ${good.run.verification!.wording}`);
     expect(done.status).toBe(0);
@@ -199,9 +207,11 @@ describe("failures are recorded, never dropped, and never accepted", () => {
     "an experiment that writes artifact.json itself": {
       source: PREAMBLE + `deliver(); (out / "artifact.json").write_text("{}")\n`, status: "failed", reason: /only the runtime may write/, fails: "R-005",
     },
-    "an experiment that edits its own workspace while running": {
-      source: PREAMBLE + `deliver(); pathlib.Path("config.json").write_text('{"seed": 8, "n_flips": 1, "p_heads": 1}')\n`, status: "completed", reason: /^$/, fails: "R-006",
-    },
+    // In the sandbox the workspace is read-only, so the write fails and the experiment with it. Without the sandbox
+    // the write succeeds and the dirty source is what gets the run rejected.
+    "an experiment that edits its own workspace while running": SANDBOX
+      ? { source: PREAMBLE + `deliver(); pathlib.Path("config.json").write_text('{"seed": 8, "n_flips": 1, "p_heads": 1}')\n`, status: "failed", reason: /exited with code/, fails: "R-005" }
+      : { source: PREAMBLE + `deliver(); pathlib.Path("config.json").write_text('{"seed": 8, "n_flips": 1, "p_heads": 1}')\n`, status: "completed", reason: /^$/, fails: "R-006" },
   };
   for (const [name, expected] of Object.entries(rejected)) {
     it(`${name} is rejected`, async () => {
@@ -242,10 +252,11 @@ describe("failures are recorded, never dropped, and never accepted", () => {
   it("a backend that does not complete yields a failed artifact naming the backend, and nothing is executed", async () => {
     const failing: Backend = {
       describe: () => ({ ...new ScriptBackend().describe(), name: "failing-test-backend" }),
-      run: async () => ({ outcome: "timeout", exit_code: null, seconds: 1, detail: "simulated", self_report: {} }),
+      run: async () => ({ outcome: "timeout", exit_code: null, seconds: 1, detail: "simulated", self_report: {}, isolation: null }),
     };
     const outcome = await run(failing);
-    expect(outcome.run.status).toBe("timeout");
+    // The message carries status_detail, so a failure in CI says why (a macOS run once gave "void" here).
+    expect(outcome.run.status, outcome.run.status_detail ?? "").toBe("timeout");
     expect(outcome.artifact.failure.reason).toMatch(/backend failing-test-backend did not complete \(timeout\): simulated/);
     expect(outcome.events.find((e) => e.type === "execution.started").executed).toBe(false);
     expect(outcome.run.verification!.verdict).toBe("rejected");
@@ -305,7 +316,7 @@ describe("a backend that touches what judges it voids the run: no artifact, no v
     run: async (request) => {
       cpSync(PRODUCER, request.workspace, { recursive: true });
       act(request);
-      return { outcome: "completed", exit_code: 0, seconds: 0, self_report: {} };
+      return { outcome: "completed", exit_code: 0, seconds: 0, self_report: {}, isolation: null };
     },
   });
   function repoCopy(): string {
@@ -388,7 +399,7 @@ describe("claude-code adapter logic, against a fake CLI (not a model)", () => {
   const fake = (mode: string) => new ClaudeCodeBackend({ command: [process.execPath, REPO_ROOT + "tests/runtime/fake-claude.mjs", `--mode=${mode}`] });
 
   it("passes the compiled instructions, stores the stream as the backend's account, and reports cost as backend-reported", async () => {
-    const outcome = await run(fake("ok"));
+    const outcome = await run(fake("ok"), { allowUnsandboxed: true });
     expect(outcome.run.status).toBe("completed");
     expect(outcome.run.backend).toMatchObject({ name: "claude-code", kind: "agent", outcome: "completed" });
     expect(outcome.run.backend.self_report).toMatchObject({ model: "fake-model-not-a-model", cost_usd: 0.0123, turns: 3, unparsed_stream_lines: 1 });
@@ -410,7 +421,7 @@ describe("claude-code adapter logic, against a fake CLI (not a model)", () => {
   };
   for (const [mode, [status, reason]] of Object.entries(incomplete)) {
     it(`fails closed when the CLI ends with ${mode}`, async () => {
-      const outcome = await run(fake(mode));
+      const outcome = await run(fake(mode), { allowUnsandboxed: true });
       expect(outcome.run.status).toBe(status);
       expect(outcome.run.status_detail).toMatch(reason);
       expect(outcome.run.verification!.verdict).toBe("rejected");
@@ -419,7 +430,7 @@ describe("claude-code adapter logic, against a fake CLI (not a model)", () => {
 
   it("kills a CLI that exceeds the backend time limit", async () => {
     const started = Date.now();
-    const outcome = await run(fake("hang"), { taskPath: taskWith((t) => { t.limits.backend_timeout_seconds = 2; }) });
+    const outcome = await run(fake("hang"), { taskPath: taskWith((t) => { t.limits.backend_timeout_seconds = 2; }), allowUnsandboxed: true });
     expect(Date.now() - started).toBeLessThan(30_000);
     expect(outcome.run.status).toBe("timeout");
     expect(outcome.run.backend.outcome).toBe("timeout");
