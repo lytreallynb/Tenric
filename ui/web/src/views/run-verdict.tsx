@@ -172,6 +172,7 @@ export function TrustBoundary({ run, record }: { run: any; record?: any }) {
         {col ? (
           <BoundaryRow icon={ShieldCheckIcon} title={t("tb_verifier_attestation")} tone={col.attested ? "ok" : "neutral"} state={<Status word={col.attested ? "attested" : "not attested"} />}>
             <p>{col.attested ? t("tb_attested_body") : t("tb_not_attested_body")}</p>
+            {col.attested ? <Notice kind="warn" className="text-foreground">{t("tb_attested_caveat")}</Notice> : null}
             {col.attested ? <Kv className="text-foreground" rows={[[t("tb_collector"), <Code>{col.id ?? "—"}</Code>], ["key id", <Sha value={col.key_id} />], [t("tb_custody"), col.custody ?? "—"], [t("tb_isolation"), col.isolation == null ? "—" : typeof col.isolation === "object" && ("execution" in col.isolation || "backend" in col.isolation)
               ? <div className="grid gap-1.5"><IsolationPart label={t("tb_isolation_backend")} part={col.isolation.backend} /><IsolationPart label={t("tb_isolation_execution")} part={col.isolation.execution} /></div>
               : <Code>{typeof col.isolation === "string" ? col.isolation : JSON.stringify(col.isolation)}</Code>]]} /> : null}

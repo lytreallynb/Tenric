@@ -163,6 +163,7 @@ const en = {
   accuracy_sub: "As recorded in each run's artifact, oldest first.",
   phase_timeline_sub: "durations as the runtime measured them",
   tb_attestation_refused: "The runtime did not sign this run's collector record. Its reason, as recorded in run.json:",
+  tb_attested_caveat: "Attested means a key in the trusted collectors file signed this record. It does not show that the runtime collected the evidence; the custody text below is the key holder's own statement, not something the verifier checked.",
   trusted_collectors: "Trusted collectors", collectors_repository: "Repository's collectors file", collectors_recorded: "File this run's stored verdict used",
   trusted_collectors_hint: "Which collector keys to trust is the operator's decision. The repository's file (spec/collectors/registry.json) trusts none; the runtime's stored verdict used the operator's own file, which trusts the runtime's key. Switch above to verify under either.",
 };
@@ -327,6 +328,7 @@ const zh = {
   accuracy_sub: "取自每个运行的产物记录，按时间从早到晚。",
   phase_timeline_sub: "时长是运行时自己测的",
   tb_attestation_refused: "运行时没有为这个运行签署采集器记录。run.json 里记录的原因：",
+  tb_attested_caveat: "“已认证”的意思是：受信清单里的某把密钥签了这份记录。它不证明证据真是运行时采集的；下面的密钥保管说明是持钥人自己的说法，验证器没有检查过。",
   trusted_collectors: "信任的采集器", collectors_repository: "仓库的采集器清单", collectors_recorded: "这个运行存下的判定所用的清单",
   trusted_collectors_hint: "信任哪些采集器密钥由运行验证的人决定。仓库自带的清单（spec/collectors/registry.json）不信任任何密钥；运行时存下的判定用的是本机操作者自己的清单，它信任运行时的密钥。可以在上面切换，分别按两者验证。",
 };
