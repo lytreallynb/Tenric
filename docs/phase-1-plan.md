@@ -53,7 +53,7 @@ Done differently from the sketch above: there is no separate `reproduce` command
 
 Contract compiler beyond hard-coded planning, a second artifact type, Controlled Evolution, any UI, any database, multi-agent orchestration, an LLM judge.
 
-Changed on 2026-11-27: the owner asked for a web interface to be built now. It is recorded in `docs/adr/0009-local-web-interface.md`. The rest of this list stands as far as this document is concerned.
+Changed on 2026-11-27: the owner asked for a web interface to be built now. It is recorded in `docs/adr/0011-local-web-interface.md`. The rest of this list stands as far as this document is concerned.
 
 ## Exit criteria
 

@@ -1,8 +1,8 @@
-# ADR-0009: A local web interface that displays and never decides
+# ADR-0011: A local web interface that displays and never decides
 
 Status: implemented and tested; awaiting owner approval. Date: 2026-11-27.
 
-**Context.** Until now the only way to see a verdict was the command line. `docs/phase-1-plan.md` listed "any UI" as explicitly not in Phase 1. On 2026-11-27 the owner asked for the interfaces to be built now, in parallel with the trust-boundary and runtime work. This record covers what was built under that instruction and the constraints it was built to. The number 0009 leaves 0007 and 0008 for those two parallel pieces of work.
+**Context.** Until now the only way to see a verdict was the command line. `docs/phase-1-plan.md` listed "any UI" as explicitly not in Phase 1. On 2026-11-27 the owner asked for the interfaces to be built now, in parallel with the trust-boundary and runtime work. This record covers what was built under that instruction and the constraints it was built to. It was first numbered 0009 and was renumbered 0011 when the runtime work, which it builds on, took 0009 and 0010.
 
 **Decision.**
 
