@@ -153,6 +153,9 @@ const en = {
   cancel_hint: "Cancel sends SIGTERM. The runtime stops the backend and the experiment and records the run as cancelled; whatever was written stays in the run directory.",
   top_blockers: "Requirements that most often block acceptance", unsigned: "unsigned",
   capabilities_declared: "Capabilities each backend declares", capabilities_declared_hint: "In each backend's own words. A declaration is a claim by the adapter, not something Tenric has tested.", capability: "Capability", phase_timeline: "Phases",
+  tb_verifier_attestation: "Collector attestation, as the verifier checked it", tb_attested_body: "The verifier found a signed collector record from a key listed in the collectors file it used, naming this artifact, its revision and this contract.",
+  tb_not_attested_body: "The verifier found no valid signed collector record for this run. The collector labels in artifact.json are then fields anyone could have written. The reasons it gave are below.",
+  tb_collector: "Collector", tb_custody: "Key custody", tb_collectors_file: "Collectors file", tb_attestation_runtime: "Attestation the runtime recorded",
 };
 
 const zh = {
@@ -307,6 +310,9 @@ const zh = {
   cancel_hint: "取消会发送 SIGTERM。运行时会停下后端和实验，把这个运行记为 cancelled；已经写下的内容留在运行目录里。",
   top_blockers: "最常阻止接受的要求", unsigned: "未签名",
   capabilities_declared: "各后端声明的能力", capabilities_declared_hint: "用的是各后端自己的说法。声明是适配器的说法，Tenric 并没有测试过。", capability: "能力", phase_timeline: "各阶段",
+  tb_verifier_attestation: "采集器证明（验证器的检查结果）", tb_attested_body: "验证器找到了一份已签名的采集器记录：签名的密钥列在它使用的采集器清单里，记录指明了这个产物、它的版本和这份契约。",
+  tb_not_attested_body: "验证器没有为这个运行找到有效的已签名采集器记录。这时 artifact.json 里的 collector 标签只是谁都能写的字段。验证器给出的原因如下。",
+  tb_collector: "采集器", tb_custody: "密钥保管", tb_collectors_file: "采集器清单", tb_attestation_runtime: "运行时记录的证明",
 };
 
 const dictionaries = { en, zh };

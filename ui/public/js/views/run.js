@@ -98,6 +98,7 @@ function verdictPanel(run, outcome, reverify) {
         [t("reproduction"), record.reproduction?.requested ? frag(t("reproduction_requested"), " · task sha256 ", sha(record.reproduction.task_sha256)) : t("reproduction_not_requested")],
         [t("exit_code_equiv"), h("code", {}, String(outcome.exit_code))],
         [t("record_schema"), h("code", {}, record.record_schema ?? "—")],
+        record.collectors ? [t("tb_collectors_file"), frag(h("code", {}, record.collectors.path), " ", sha(record.collectors.sha256))] : null,
         [t("cli_equivalent"), h("code", { class: "wrap-any" }, `node src/cli.ts verify ${run.summary.path} --contract ${record.contract.path} --repo ${repoFlag}${flags}`)],
       ]),
       record.verifier.dirty ? frag(h("div", { class: "spacer" }), notice("warn", t("verifier_dirty_title"), t("verifier_dirty_body"))) : null)),
@@ -155,6 +156,14 @@ function trustSection(run, record) {
   const established = new Set(record.capabilities?.established ?? []);
   const sandbox = trust.backend_sandbox;
   const rows = [];
+  const col = record.collector;
+  if (col) rows.push(boundaryRow("shield", t("tb_verifier_attestation"),
+    col.attested ? badge("attested", "pass") : badge("not attested", "neutral"), col.attested ? "ok" : "neutral",
+    frag(col.attested ? t("tb_attested_body") : t("tb_not_attested_body"),
+      col.attested ? kv([[t("tb_collector"), h("code", {}, col.id ?? "—")], ["key id", sha(col.key_id)], [t("tb_custody"), col.custody ?? "—"],
+        [t("tb_isolation"), col.isolation === null || col.isolation === undefined ? "—" : h("code", { class: "wrap-any" }, typeof col.isolation === "string" ? col.isolation : JSON.stringify(col.isolation))]]) : null,
+      (col.problems ?? []).length > 0 ? h("ul", { class: "problems" }, col.problems.map((p) => h("li", { class: "mono wrap-any" }, p))) : null,
+      record.collectors ? h("div", { class: "row tight small muted" }, t("tb_collectors_file"), " ", h("code", {}, record.collectors.path), " ", sha(record.collectors.sha256)) : null)));
 
   rows.push(boundaryRow("shield", t("tb_capabilities"),
     required.length === 0 ? h("span", { class: "faint" }, "—") : h("span", { class: "row" }, required.map((c) => h("span", { class: "row tight" }, h("code", {}, c), established.has(c) ? badge("established", "pass") : badge("not established", "neutral")))),
@@ -168,9 +177,9 @@ function trustSection(run, record) {
 
   const att = trust.attestation;
   rows.push(att
-    ? boundaryRow("pen", t("tb_attestation"), h("span", { class: "row" }, h("code", {}, att.format ?? "?"), att.verified_by ? badge(`verified by ${att.verified_by}`, "pass") : badge("not checked by the verifier", "neutral")), att.verified_by ? "ok" : "neutral",
+    ? boundaryRow("pen", t("tb_attestation_runtime"), h("span", { class: "row" }, h("code", {}, att.format ?? "?"), att.verified_by ? badge(`verified by ${att.verified_by}`, "pass") : badge("not checked by the verifier", "neutral")), att.verified_by ? "ok" : "neutral",
       kv([[t("tb_signer"), att.signer ?? "—"], ["subject sha256", frag(sha(att.subject_sha256, true), att.subject_sha256 && run.summary.artifact_sha256 ? frag(" ", att.subject_sha256 === run.summary.artifact_sha256 ? badge("matches artifact.json", "pass") : badge("differs from artifact.json", "fail")) : null)], ["key id", sha(att.key_id)], [t("file"), att.path ? h("code", {}, att.path) : "—"]]))
-    : boundaryRow("pen", t("tb_attestation"), h("span", { class: "badge none plain" }, t("not_yet_available")), "neutral", t("tb_attestation_missing")));
+    : boundaryRow("pen", t("tb_attestation_runtime"), h("span", { class: "badge none plain" }, t("not_yet_available")), "neutral", t("tb_attestation_missing")));
 
   rows.push(trust.integrity
     ? boundaryRow("check", t("tb_integrity"), trust.integrity.violations && trust.integrity.violations.length === 0 ? badge("no violations", "pass") : badge(`${trust.integrity.violations?.length ?? "?"} violations`, "fail"),
@@ -373,12 +382,14 @@ function runtimePanel(run) {
 // --------------------------------------------------------------------- page
 
 /** A one-line summary of the trust boundary section, as the run's records state it. */
-function trustFact(run) {
+function trustFact(run, outcome) {
   const trust = run.trust ?? {};
+  const col = outcome?.issued ? outcome.record.collector : undefined;
   const isolation = trust.isolation
     ? (trust.isolation.backend?.enforced && trust.isolation.execution?.enforced ? badge("enforced", "pass") : badge("not enforced", "neutral"))
     : h("span", { class: "badge none plain" }, t("not_recorded"));
-  const attestation = trust.attestation ? badge("signed", "pass") : h("span", { class: "badge none plain" }, t("unsigned"));
+  const attestation = col ? (col.attested ? badge("attested", "pass") : badge("not attested", "neutral"))
+    : trust.attestation ? badge("signed", "pass") : h("span", { class: "badge none plain" }, t("unsigned"));
   const link = h("a", { href: "#tb", onclick: (event) => {
     event.preventDefault();
     const go = () => document.getElementById("tb")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -401,7 +412,7 @@ export async function runDetail({ args: [id, tab] }) {
     container.replaceChildren(tabs([
       { id: "verdict", label: t("tab_verdict"), render: () => verdictPanel(run, outcome, async (body) => {
         try { outcome = await api.reverify(id, body); } catch (error) { outcome = { issued: false, no_verdict: `${t("verifier_fault")}: ${error.message}` }; }
-        draw("verdict"); headVerdict();
+        draw("verdict"); headVerdict(); headTrust();
       }) },
       { id: "evidence", label: t("tab_evidence"), render: () => evidencePanel(run, outcome) },
       { id: "outputs", label: `${t("tab_outputs")} · ${run.files.length}`, render: () => outputsPanel(run) },
@@ -415,7 +426,9 @@ export async function runDetail({ args: [id, tab] }) {
     h("div", { class: "label" }, t("verdict")),
     h("div", { class: "v" }, outcome.issued ? badge(outcome.record.verdict) : h("span", { class: "badge none plain" }, t("no_verdict"))),
     h("div", { class: "l" }, outcome.issued ? `${outcome.record.summary.passed} / ${outcome.record.summary.mandatory} ${t("mandatory_passed_l")} · ${outcome.record.contract.version}` : "—"));
-  headVerdict();
+  const trustFactBox = h("div", {});
+  const headTrust = () => trustFactBox.replaceChildren(...trustFact(run, outcome).childNodes);
+  headVerdict(); headTrust();
   draw(tab ?? "verdict");
 
   const failure = run.artifact?.failure;
@@ -431,7 +444,7 @@ export async function runDetail({ args: [id, tab] }) {
       fact(t("execution"), frag(s.status ? badge(s.status) : "—", s.exit_code !== undefined ? h("span", { class: "muted mono" }, `exit ${s.exit_code}`) : null), frag(num(s.runtime_seconds), " s · ", time(s.started_at))),
       fact(t("source_revision"), revision(s.source), s.runtime ? frag(t("lifecycle_status"), " ", s.runtime.status ?? "unknown") : s.source?.kind ?? "—"),
       fact(t("data_class"), dataClass(s.data_class), frag("artifact ", sha(s.artifact_sha256))),
-      trustFact(run)),
+      trustFactBox),
     failure ? frag(h("div", { class: "spacer" }), notice("bad", `${t("failure_record")}: ${failure.reason}`, failure.stderr_tail ? h("pre", { class: "wrap term" }, failure.stderr_tail) : null)) : null,
     (s.metrics ?? []).length > 0 ? h("div", { class: "metrics" }, s.metrics.map((m) => h("div", { class: "metric" }, h("div", { class: "n" }, num(m.value)), h("div", { class: "l" }, m.name)))) : null,
     container,

@@ -524,3 +524,4 @@ td .mono.faint { font-size: 12px; }
   .facts > div { border-right: 0; border-bottom: 1px solid var(--line); }
   h1 { font-size: 22px; }
 }
+.problems { margin: 8px 0 0; color: var(--muted); font-size: 12px; } .problems li + li { margin-top: 3px; }
