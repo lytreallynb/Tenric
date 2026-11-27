@@ -25,7 +25,7 @@ describe("tenric verify", () => {
     expect(out).toContain(`contract: research.experiment-report version 0.2.0 sha256 ${sha256File(REPO_ROOT + CONTRACT)} (matches the registry)`);
     expect(out).toContain(`sha256 ${sha256File(REPO_ROOT + "runs/verify-a/artifact.json")}`);
     expect(out).toContain(`verifier: revision ${git("rev-parse", "HEAD")}`);
-    expect(out).toMatch(/^note: the contract requires capabilities this verifier cannot establish: independent-collector, content-hashing$/m);
+    expect(out).toMatch(/^note: the contract requires capabilities that are not established for this run: independent-collector, content-hashing$/m);
   });
 
   it("reports the failed run as rejected and exits 1", () => {
@@ -38,7 +38,7 @@ describe("tenric verify", () => {
   it("exits 0 only for accepted: with a re-execution the baseline is accepted under the registered contract", () => {
     const { code, out } = tenric(["verify", "runs/verify-a", "--contract", CONTRACT, "--repo", ".", "--reproduce", "--task", TASK]);
     expect(out).toMatch(/^R-008  pass  .*\n\s+re-executed revision [0-9a-f]{40} in an equal environment: 3 metrics equal, 3 outputs byte-identical$/m);
-    expect(out).toMatch(/^verdict: accepted under contract research\.experiment-report version 0\.2\.0: 10 of 10 mandatory requirements passed \(9 machine, 1 empirical, 0 human\)$/m);
+    expect(out).toMatch(/^verdict: accepted under contract research\.experiment-report version 0\.2\.0: 10 of 10 mandatory requirements passed \(9 machine, 1 empirical, 0 human\); collector not attested$/m);
     expect(out).not.toMatch(/verified|correct/i);
     expect(code).toBe(0);
   }, SLOW);
