@@ -1,0 +1,10 @@
+{
+  "runtime_task_schema": "0.1.0",
+  "id": "fixture-coin-flips",
+  "title": "DEMONSTRATION FIXTURE: seeded coin flips (runtime test producer, not a result)",
+  "data_class": "fixture",
+  "contract": { "id": "research.experiment-report", "version": "0.1.0" },
+  "brief": "Fixture brief used only to exercise the runtime: simulate seeded coin flips and report the fraction of heads.",
+  "script_producer": "fixtures/producers/coin-flips",
+  "limits": { "backend_timeout_seconds": 60, "execution_timeout_seconds": 60 }
+}
