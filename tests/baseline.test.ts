@@ -8,26 +8,12 @@ import { join } from "node:path";
 import { runChecks, sha256File } from "../src/checks.ts";
 import { loadContract, readJson, REPO_ROOT, validateArtifact } from "../src/spec.ts";
 import { decide } from "../src/verdict.ts";
+import { CONTRACT, CONTRACT_010, editArtifact, RUN_A, RUN_B, tamperedCopy } from "./helpers.ts";
 
-const RUN_A = process.env.TENRIC_RUN_A ?? REPO_ROOT + "runs/verify-a";
-const RUN_B = process.env.TENRIC_RUN_B ?? REPO_ROOT + "runs/verify-b";
-const contract = loadContract(REPO_ROOT + "spec/contracts/research.experiment-report/0.1.0.contract.json");
+const contract = loadContract(REPO_ROOT + CONTRACT);
 // Copies of a run live in a temporary directory, so the repository to check revisions against is named explicitly.
 const check = (dir: string) => runChecks(contract, dir, { repo: REPO_ROOT });
 const status = (dir: string) => Object.fromEntries(check(dir).map((r) => [r.requirement, r.status]));
-
-function tamperedCopy(mutate: (dir: string) => void): string {
-  const dir = mkdtempSync(join(tmpdir(), "tenric-run-"));
-  cpSync(RUN_A, dir, { recursive: true });
-  mutate(dir);
-  return dir;
-}
-function editArtifact(dir: string, mutate: (artifact: any) => void): void {
-  const path = join(dir, "artifact.json");
-  const artifact = readJson(path);
-  mutate(artifact);
-  writeFileSync(path, JSON.stringify(artifact));
-}
 
 beforeAll(() => {
   for (const dir of [RUN_A, RUN_B]) {
@@ -46,14 +32,23 @@ describe("baseline run: evidence checks", () => {
     expect(artifact.source.kind).toBe("git");
   });
 
-  it("passes the seven machine validators", () => {
+  it("passes the nine machine validators", () => {
     expect(status(RUN_A)).toEqual({
+      "R-001": "pass", "R-002": "pass", "R-003": "pass", "R-004": "pass",
+      "R-005": "pass", "R-006": "pass", "R-007": "pass", "R-008": "not_run", "R-009": "not_run",
+      "R-010": "pass", "R-011": "pass",
+    });
+  });
+
+  it("passes the seven machine validators of contract 0.1.0, which stays as published", () => {
+    const first = loadContract(REPO_ROOT + CONTRACT_010);
+    expect(Object.fromEntries(runChecks(first, RUN_A, { repo: REPO_ROOT }).map((r) => [r.requirement, r.status]))).toEqual({
       "R-001": "pass", "R-002": "pass", "R-003": "pass", "R-004": "pass",
       "R-005": "pass", "R-006": "pass", "R-007": "pass", "R-008": "not_run", "R-009": "not_run",
     });
   });
 
-  it("is NOT accepted: the mandatory re-execution requirement has no validator, so the verdict is inconclusive", () => {
+  it("is NOT accepted without a re-execution: the mandatory reproduction requirement was not run, so the verdict is inconclusive", () => {
     const decision = decide(contract, check(RUN_A));
     expect(decision.verdict).toBe("inconclusive");
     expect(decision.blocking.map((r) => r.requirement)).toEqual(["R-008"]);
@@ -153,6 +148,32 @@ describe("baseline run: invalid artifacts are rejected", () => {
       mutate: (dir) => editArtifact(dir, (a) => { a.findings[0].supported_by = ["output:notes.txt"]; }),
       fails: "R-007",
     },
+    "a real run labelled as a fixture": {
+      mutate: (dir) => editArtifact(dir, (a) => { a.data_class = "fixture"; }),
+      fails: "R-010",
+    },
+    "an artifact that reports no metrics": {
+      mutate: (dir) => editArtifact(dir, (a) => { a.metrics = []; }),
+      fails: "R-007",
+      also: "R-010",
+    },
+    "an artifact with no findings": {
+      mutate: (dir) => editArtifact(dir, (a) => { a.findings = []; }),
+      fails: "R-010",
+    },
+    "an artifact that lists no report": {
+      mutate: (dir) => editArtifact(dir, (a) => { a.outputs = a.outputs.filter((o: any) => o.role !== "report"); }),
+      fails: "R-010",
+    },
+    "a metric name used twice": {
+      mutate: (dir) => editArtifact(dir, (a) => { a.metrics.push({ ...a.metrics[0] }); }),
+      fails: "R-011",
+    },
+    "a figure whose image is not a listed output": {
+      mutate: (dir) => editArtifact(dir, (a) => { a.figures[0].image_output = "figures/never_rendered.png"; }),
+      fails: "R-011",
+    },
+
   };
   for (const [name, { mutate, fails, also }] of Object.entries(cases)) {
     it(`rejects ${name} (${fails})`, () => {
@@ -164,13 +185,32 @@ describe("baseline run: invalid artifacts are rejected", () => {
     });
   }
 
-  it("rejects the demonstration fixture relabelled as a measurement (R-002, R-004, R-006)", () => {
+  it("rejects the demonstration fixture as it is, for being a fixture (R-010 among others)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tenric-fixture-"));
+    cpSync(REPO_ROOT + "fixtures/research-report/valid.fixture.artifact.json", join(dir, "artifact.json"));
+    const results = check(dir);
+    expect(results.find((r) => r.requirement === "R-010")).toMatchObject({ status: "fail" });
+    expect(results.find((r) => r.requirement === "R-010")?.detail).toContain('data_class is "fixture"');
+    expect(decide(contract, results).verdict).toBe("rejected");
+  });
+
+  it("rejects the demonstration fixture relabelled as a measurement (R-002, R-004, R-006, R-010)", () => {
     const dir = mkdtempSync(join(tmpdir(), "tenric-fixture-"));
     cpSync(REPO_ROOT + "fixtures/research-report/valid.fixture.artifact.json", join(dir, "artifact.json"));
     editArtifact(dir, (a) => { a.data_class = "measured"; });
     const results = check(dir);
-    expect(results.filter((r) => r.status === "fail").map((r) => r.requirement)).toEqual(["R-002", "R-004", "R-006"]);
+    expect(results.filter((r) => r.status === "fail").map((r) => r.requirement)).toEqual(["R-002", "R-004", "R-006", "R-010"]);
     expect(decide(contract, results).verdict).toBe("rejected");
+  });
+
+  it("fails R-001 when the contract governs another artifact type or IR version than the artifact has", () => {
+    for (const governs of [{ type: "research.experiment-report", ir_version: "0.2.0" }, { type: "code.patch", ir_version: "0.1.0" }]) {
+      const other = structuredClone(contract);
+      other.artifact = { ...other.artifact!, ...governs };
+      const results = runChecks(other, RUN_A, { repo: REPO_ROOT });
+      expect(results.find((r) => r.requirement === "R-001")?.status, JSON.stringify(governs)).toBe("fail");
+      expect(decide(other, results).verdict).toBe("rejected");
+    }
   });
 
   it("does not run content validators on a structurally invalid artifact", () => {
@@ -178,6 +218,7 @@ describe("baseline run: invalid artifacts are rejected", () => {
     expect(status(dir)).toEqual({
       "R-001": "fail", "R-002": "error", "R-003": "error", "R-004": "error",
       "R-005": "error", "R-006": "error", "R-007": "error", "R-008": "not_run", "R-009": "not_run",
+      "R-010": "error", "R-011": "error",
     });
   });
 });
@@ -223,9 +264,9 @@ describe("failed run: failure is explicit", () => {
     expect(artifact.metrics).toEqual([]);
   });
 
-  it("is rejected, because execution did not succeed (R-005)", () => {
+  it("is rejected, because execution did not succeed (R-005) and so there is nothing to report (R-010)", () => {
     const results = check(dir);
-    expect(results.filter((r) => r.status === "fail").map((r) => r.requirement)).toEqual(["R-005"]);
+    expect(results.filter((r) => r.status === "fail").map((r) => r.requirement)).toEqual(["R-005", "R-010"]);
     expect(decide(contract, results).verdict).toBe("rejected");
   });
 });
@@ -241,9 +282,9 @@ describe("timed-out run: the collector records the timeout", () => {
     expect(artifact.outputs).toEqual([]);
   });
 
-  it("is rejected (R-005)", () => {
+  it("is rejected (R-005, R-010)", () => {
     const results = check(dir);
-    expect(results.filter((r) => r.status === "fail").map((r) => r.requirement)).toEqual(["R-005"]);
+    expect(results.filter((r) => r.status === "fail").map((r) => r.requirement)).toEqual(["R-005", "R-010"]);
     expect(decide(contract, results).verdict).toBe("rejected");
   });
 });
