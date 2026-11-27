@@ -11,6 +11,12 @@
       "path": "spec/contracts/research.experiment-report/0.2.0.contract.json",
       "sha256": "6f1d9eafe02d17746ed3e106722fe2ae0a7c1a010f074f688eb5ee3003651e11",
       "version": "0.2.0"
+    },
+    {
+      "id": "research.experiment-report",
+      "path": "spec/contracts/research.experiment-report/0.3.0.contract.json",
+      "sha256": "891d92d3d68cc0739bf67624a872d031f7c92b727c003fc96c2c4161882b058f",
+      "version": "0.3.0"
     }
   ],
   "registry_schema": "0.1.0"

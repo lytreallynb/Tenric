@@ -7,6 +7,7 @@ import { readJson, REPO_ROOT, sha256File } from "../src/spec.ts";
 
 export const CONTRACT_010 = "spec/contracts/research.experiment-report/0.1.0.contract.json";
 export const CONTRACT = "spec/contracts/research.experiment-report/0.2.0.contract.json";
+export const CONTRACT_030 = "spec/contracts/research.experiment-report/0.3.0.contract.json";
 export const TASK = "experiments/baseline/task.json";
 export const RUN_A = process.env.TENRIC_RUN_A ?? REPO_ROOT + "runs/verify-a";
 export const RUN_B = process.env.TENRIC_RUN_B ?? REPO_ROOT + "runs/verify-b";

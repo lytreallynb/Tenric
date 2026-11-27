@@ -85,10 +85,19 @@ const KINDS: Record<string, { supplied_by: Supplier; obligations: string[] | ((p
   },
   "numeric-reproduction": {
     supplied_by: "empirical",
-    obligations: [
-      "The verifier executes the experiment again from the committed workspace and compares. In an equal environment every declared metric must come out exactly equal, so fix every source of randomness with the seed in config.json.",
-      "Declare in claims.json outputs[] any file that legitimately differs between two executions as numeric-tolerance or volatile. An undeclared metrics.json or figure is expected to be byte-identical, and so is every file you declare byte-identical.",
-    ],
+    obligations: (params) => {
+      const rules = Array.isArray(params.metric_rules) ? (params.metric_rules as { pattern?: unknown; abs_tolerance?: unknown; rel_tolerance?: unknown }[]) : [];
+      const allowed = rules.map((rule) => rule.rel_tolerance !== undefined
+        ? `a metric whose name matches \`${String(rule.pattern)}\` may differ by up to ${String(rule.rel_tolerance)} times the larger of the two values`
+        : `a metric whose name matches \`${String(rule.pattern)}\` may differ by up to ${String(rule.abs_tolerance)}`);
+      return [
+        "The verifier executes the experiment again from the committed workspace and compares. Fix every source of randomness with the seed in config.json.",
+        allowed.length > 0
+          ? `In an equal environment every declared metric must come out exactly equal, with these exceptions: ${allowed.join("; ")}. A quantity that varies between executions must be declared under a name that matches one of these patterns and only if it is that kind of quantity; a varying quantity that fits no pattern (for example a ratio of two timings) must not be declared as a metric, though it may stay in metrics.json and in a figure.`
+          : "In an equal environment every declared metric must come out exactly equal; this contract makes no exception. If the task asks for a quantity that varies between executions by nature, declare it anyway and say so under limitations: this requirement will then fail, which is the correct outcome under this contract and must not be hidden by leaving the quantity out.",
+        "Declare in claims.json outputs[] any file that legitimately differs between two executions as numeric-tolerance or volatile. An undeclared metrics.json or figure is expected to be byte-identical, and so is every file you declare byte-identical.",
+      ];
+    },
   },
   "human-review": {
     supplied_by: "human",

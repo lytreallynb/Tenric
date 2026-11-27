@@ -28,7 +28,7 @@ describe("contract registry", () => {
   it("lists every contract file in the repository with the digest of its current bytes", () => {
     const registry = loadRegistry();
     expect(registry.contracts.map((c) => `${c.id}@${c.version}`)).toEqual(
-      ["research.experiment-report@0.1.0", "research.experiment-report@0.2.0"],
+      ["research.experiment-report@0.1.0", "research.experiment-report@0.2.0", "research.experiment-report@0.3.0"],
     );
     for (const entry of registry.contracts) {
       expect(existsSync(REPO_ROOT + entry.path), entry.path).toBe(true);

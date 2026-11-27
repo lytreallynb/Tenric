@@ -10,7 +10,6 @@
     { "name": "results_agree", "json_pointer": "/results_agree" },
     { "name": "builtin_seconds", "json_pointer": "/at_largest_size/builtin_seconds", "unit": "s" },
     { "name": "merge_sort_seconds", "json_pointer": "/at_largest_size/merge_sort_seconds", "unit": "s" },
-    { "name": "merge_over_builtin", "json_pointer": "/at_largest_size/merge_over_builtin" },
     { "name": "largest_size", "json_pointer": "/largest_size", "unit": "elements" }
   ],
   "figures": [
@@ -25,8 +24,8 @@
   "findings": [
     {
       "id": "F1",
-      "statement": "On {{metric:largest_size}} random integers the pure-Python merge sort took {{metric:merge_over_builtin:1}} times as long as the built-in sorted() (median of 7 repetitions: {{metric:merge_sort_seconds:4}} s against {{metric:builtin_seconds:4}} s).",
-      "supported_by": ["metric:merge_over_builtin", "metric:merge_sort_seconds", "metric:builtin_seconds", "figure:time-vs-size"]
+      "statement": "On {{metric:largest_size}} random integers the pure-Python merge sort took {{metric:merge_sort_seconds:4}} s and the built-in sorted() {{metric:builtin_seconds:4}} s (medians of 7 repetitions).",
+      "supported_by": ["metric:merge_sort_seconds", "metric:builtin_seconds", "figure:time-vs-size"]
     },
     {
       "id": "F2",
@@ -35,7 +34,7 @@
     }
   ],
   "limitations": [
-    "Wall-clock timings on one machine under whatever load it had; they differ between executions and are declared volatile.",
+    "Wall-clock timings on one machine under whatever load it had; they differ between executions and are declared volatile. The ratio of the two times is in metrics.json but is not a declared metric, because the contract compares only durations with a tolerance.",
     "One input distribution (uniform random integers) and three sizes: nothing is shown about sorted, reversed or duplicate-heavy inputs.",
     "The merge sort is a plain textbook version, not a tuned one; the ratio says little about what pure Python could reach."
   ]
