@@ -1,0 +1,34 @@
+{
+  "claims_schema": "0.1.0",
+  "dataset": {
+    "name": "sklearn-digits",
+    "version": "as bundled with the locked scikit-learn",
+    "description": "Optical recognition of handwritten digits (UCI ML repository test set), as bundled with scikit-learn.",
+    "file": "package:sklearn/datasets/data/digits.csv.gz"
+  },
+  "metrics": [
+    { "name": "test_accuracy", "json_pointer": "/test/accuracy" },
+    { "name": "test_macro_f1", "json_pointer": "/test/macro_f1" },
+    { "name": "reference_most_frequent_accuracy", "json_pointer": "/reference_most_frequent/accuracy" }
+  ],
+  "figures": [
+    {
+      "id": "confusion-matrix",
+      "spec_output": "figures/confusion_matrix.spec.json",
+      "image_output": "figures/confusion_matrix.png",
+      "renderer": "matplotlib"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "statement": "Logistic regression reaches {{metric:test_accuracy:4}} test accuracy on the held-out split, against {{metric:reference_most_frequent_accuracy:4}} for a most-frequent-class reference.",
+      "supported_by": ["metric:test_accuracy", "metric:reference_most_frequent_accuracy", "figure:confusion-matrix"]
+    }
+  ],
+  "limitations": [
+    "Single seed and a single train/test split: no variance estimate is reported.",
+    "The digits dataset is small and saturated; the result says nothing about harder benchmarks.",
+    "Metrics were computed by the experiment process itself; the collector verifies file integrity, not metric correctness."
+  ]
+}
