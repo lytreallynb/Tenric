@@ -33,6 +33,7 @@ It prints the contract's SHA-256, the artifact's SHA-256, the verifier's revisio
 - With `--reproduce`, the verifier checks out the recorded revision into a fresh worktree, runs the experiment again in a clean environment and compares. Without it, R-008 is `not_run` and the verdict is at best `inconclusive`.
 - A contract file whose bytes are not the ones listed in `spec/contracts/registry.json` gets no verdict.
 - A run collected from a working tree with uncommitted changes is `rejected`.
+- Every verdict says whether a collector the operator trusts signed the run (`; collector not attested` otherwise). Contract 0.4.0 requires that signature (R-012). Trusted collectors are listed in `spec/collectors/registry.json`, which is empty, or in the file given with `--collectors`. `node src/cli.ts collector-key` makes a key and its entry; `node src/cli.ts attest` signs a run. See ADR-0011.
 - `accepted` means the listed requirements passed. It is not a statement that the findings are true, and the trust boundary has known gaps: read `docs/trust-model.md` before relying on a verdict.
 
 ## What is here
@@ -46,7 +47,7 @@ It prints the contract's SHA-256, the artifact's SHA-256, the verifier's revisio
 | `docs/evaluation-plan.md` | How Tenric would be compared with instructions, skills and plain scripts |
 | `docs/phase-1-plan.md`, `docs/open-questions.md` | Next slice, unresolved questions, risks |
 | `docs/adr/` | Architecture decision records |
-| `spec/` | Contract schema, research Artifact IR schema, contracts 0.1.0 and 0.2.0, the contract registry |
+| `spec/` | Contract schema, research Artifact IR schema, contracts 0.1.0 to 0.4.0, the contract registry, the (empty) list of trusted collectors |
 | `experiments/baseline/` | CPU-only experiment and a conventional collector, in Python |
 | `src/`, `tests/` | Validators, re-execution, the verdict record, the `verify` command line, verdict semantics as executable specification, tests |
 | `fixtures/` | Hand-written demonstration data, labelled as such |
