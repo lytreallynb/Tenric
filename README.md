@@ -48,6 +48,14 @@ node src/tenric.ts runs
 
 `run` compiles the task against its contract, lets the backend write an experiment in a workspace, executes that experiment itself, assembles the artifact from what it observed and has the verifier judge it with a re-execution. The backend never writes the artifact. Exit codes are those of `verify`. The `claude-code` backend needs the Claude Code CLI installed and signed in, takes a few minutes and spends model usage; it runs code an agent wrote on your machine **without a sandbox** (ADR-0009). File layout and commands: [docs/runtime-interface.md](docs/runtime-interface.md). What real runs showed: [docs/reports/runtime-report.md](docs/reports/runtime-report.md).
 
+## Web interface
+
+```sh
+npm run ui        # installs and builds the front end on first use, then open http://localhost:4173
+```
+
+A local, read-only view of this checkout: contracts and their requirements, every run under `runs/`, the verdict for each run with the result of every requirement, evidence beside claims, output digests against the files on disk, a comparison of two runs, and the documents under `docs/`. For runs made by the runtime it also shows the compiled plan, lifecycle events and the backend's own account, labelled as such. It can start a baseline run or a runtime run with any listed backend and task. It computes every verdict by calling the verifier and stores nothing. It listens on the loopback interface only; `TENRIC_UI_PORT` changes the port. It is implemented and tested, and not approved; see [ADR-0012](docs/adr/0012-local-web-interface.md) for what it is and is not.
+
 ## What is here
 
 | Path | Content |
@@ -66,6 +74,7 @@ node src/tenric.ts runs
 | `experiments/sort-benchmark/` | The second experiment, with both a runtime producer and a conventional collector |
 | `evaluation/group-b/` | Runner for the comparison group that gets the standard as instructions only |
 | `src/`, `tests/` | Validators, re-execution, the verdict record, the `verify` command line, verdict semantics as executable specification, tests |
+| `ui/` | The local web interface: `ui/server/` (Node `http`, TypeScript) and `ui/web/` (React, shadcn/ui and Tailwind, with its own lockfile; built by `npm run ui`) |
 | `fixtures/` | Hand-written demonstration data, labelled as such |
 
 ## Ground rules

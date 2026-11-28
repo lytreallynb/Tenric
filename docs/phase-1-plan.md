@@ -55,6 +55,8 @@ State on 2026-11-27: the owner approved going ahead. 1E and 1F are implemented a
 
 Contract compiler beyond hard-coded planning, a second artifact type, Controlled Evolution, any UI, any database, multi-agent orchestration, an LLM judge.
 
+Changed on 2026-11-27: the owner asked for a web interface to be built now. It is recorded in `docs/adr/0012-local-web-interface.md`. The rest of this list stands as far as this document is concerned.
+
 ## Exit criteria
 
 1. The baseline is `accepted` under contract 0.1.0 by a verifier running in CI.

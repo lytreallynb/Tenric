@@ -12,7 +12,8 @@
     "test": "vitest run",
     "baseline": "uv run --locked python experiments/baseline/run_baseline.py --out runs/baseline",
     "tenric": "node src/tenric.ts",
-    "verify": "bash scripts/verify.sh"
+    "verify": "bash scripts/verify.sh",
+    "ui": "node ui/start.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.7",
