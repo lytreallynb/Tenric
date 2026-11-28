@@ -90,6 +90,23 @@ describe("interface verdicts are the verifier's verdicts", () => {
     expect(list.find((r) => r.id === "verify-fail").verification.verdict).toBe("rejected");
   });
 
+  it("the run list carries each requirement's status exactly as the verifier reported it", async () => {
+    const list = (await call("/api/runs")).json as any[];
+    for (const id of ["verify-a", "verify-fail"]) {
+      const single = (await call(`/api/runs/${id}/verify`)).json;
+      expect(list.find((r) => r.id === id).verification.requirements).toEqual(
+        single.record.results.map((r: any) => ({ id: r.requirement, title: r.title, level: r.level, status: r.status })));
+    }
+  });
+
+  it("lists only figures the artifact names and that exist in the run directory", async () => {
+    const run = ((await call("/api/runs")).json as any[]).find((r) => r.id === "verify-a");
+    expect(run.figures).toEqual(["figures/confusion_matrix.png"]);
+    expect((await call(`/api/runs/verify-a/files/${run.figures[0]}`)).status).toBe(200);
+    const failed = ((await call("/api/runs")).json as any[]).find((r) => r.id === "verify-timeout");
+    expect(failed.figures ?? []).toEqual([]);
+  });
+
   it("never words a verdict as verified or correct", async () => {
     const { text } = await call("/api/runs/verify-a/verify");
     expect(text).not.toMatch(/verified correct|\bproven\b|is correct/i);

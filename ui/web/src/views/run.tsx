@@ -9,6 +9,8 @@ import { Code, DataClass, Empty, Json, Kv, NotAvailable, NotAvailableBadge, NoVe
 import { SimpleTable } from "@/components/app/data-table";
 import { ChartBox, ChartTip } from "@/components/app/chart";
 import { Loaded } from "@/components/app/load";
+import { Fingerprint, cellsOfRecord } from "@/components/app/fingerprint";
+import { Figure } from "@/components/app/media";
 import { useCrumbs } from "@/components/app/shell";
 import { isolationEnforced, VerdictTab } from "./run-verdict";
 import { api } from "@/lib/api.js";
@@ -334,13 +336,11 @@ function RuntimeTab({ run }: { run: any }) {
 
 function Fact({ label, children, sub, className }: { label: React.ReactNode; children: React.ReactNode; sub?: React.ReactNode; className?: string }) {
   return (
-    <Card className={cn("gap-2 py-4", className)}>
-      <CardContent className="grid gap-1.5 px-4">
-        <div className="text-muted-foreground text-xs font-medium">{label}</div>
-        <div className="flex min-h-6 flex-wrap items-center gap-2">{children}</div>
-        {sub ? <div className="text-muted-foreground text-xs break-words">{sub}</div> : null}
-      </CardContent>
-    </Card>
+    <div className={cn("grid content-start gap-1.5 px-5 py-4", className)}>
+      <div className="eyebrow">{label}</div>
+      <div className="flex min-h-6 flex-wrap items-center gap-2">{children}</div>
+      {sub ? <div className="text-muted-foreground text-xs break-words">{sub}</div> : null}
+    </div>
   );
 }
 
@@ -352,7 +352,7 @@ function TrustFact({ run, outcome, onOpen }: { run: any; outcome: any; onOpen: (
     : <NotAvailableBadge text={t("not_recorded")} />;
   const attestation = col ? <Status word={col.attested ? "attested" : "not attested"} /> : trust.attestation ? <Status word="signed" /> : <NotAvailableBadge text={t("unsigned")} />;
   return (
-    <Fact className="col-span-2 xl:col-span-1" label={<button type="button" onClick={onOpen} className="hover:text-foreground underline-offset-4 hover:underline">{t("tb_title")}</button>}>
+    <Fact className="col-span-2 lg:col-span-1" label={<button type="button" onClick={onOpen} className="hover:text-foreground underline-offset-4 hover:underline">{t("tb_title")}</button>}>
       <div className="grid w-full gap-1.5 text-xs">
         <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">{t("tb_isolation")}</span>{isolation}</div>
         <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">{t("tb_attestation")}</span>{attestation}</div>
@@ -376,6 +376,8 @@ export function RunDetail({ args: [id, initialTab] }: { args: (string | undefine
         const current = outcome ?? first;
         const s = run.summary;
         const failure = run.artifact?.failure;
+        const figures: string[] = s.figures ?? [];
+        const figure = figures[0];
         const reverify = async (body: any) => {
           try { setOutcome(await api.reverify(id, body)); } catch (error: any) { setOutcome({ issued: false, no_verdict: `${t("verifier_fault")}: ${error.message}` }); }
         };
@@ -383,6 +385,7 @@ export function RunDetail({ args: [id, initialTab] }: { args: (string | undefine
         return (
           <>
             <PageHeader
+              eyebrow={<span className="normal-case">{[s.experiment_id, s.runtime?.backend ?? (s.origin === "run" ? "baseline-script" : null), s.runtime?.task].filter(Boolean).join(" · ") || s.origin}</span>}
               title={s.title ?? id}
               description={<span className="flex flex-wrap items-center gap-x-2 gap-y-1"><Code>{s.path}</Code>{s.experiment_id ? <span>{t("experiment")} <Code>{s.experiment_id}</Code></span> : null}{s.runtime ? <span>{t("backend")} <Code>{s.runtime.backend ?? "?"}</Code> · {t("task")} <Code>{s.runtime.task ?? "?"}</Code></span> : null}</span>}
               actions={<Button variant="outline" asChild><a href={`#/compare?a=${enc(id!)}`}><GitCompareArrowsIcon />{t("compare_with_another")}</a></Button>}
@@ -390,31 +393,55 @@ export function RunDetail({ args: [id, initialTab] }: { args: (string | undefine
             {s.origin === "fixture" ? <Notice kind="warn" title={t("fixture_title")}>{t("fixture_body")}</Notice>
               : s.data_class === "fixture" ? <Notice kind="warn" title={t("fixture_run_title")}>{t("fixture_run_body")}</Notice> : null}
             {s.readable ? null : <Notice kind="bad" title={t("artifact_unreadable")}>{s.error}</Notice>}
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-              <Fact label={t("verdict")} sub={current.issued ? `${current.record.summary.passed} / ${current.record.summary.mandatory} ${t("mandatory_passed_l")} · ${current.record.contract.version}` : "—"}>
-                {current.issued ? <Status word={current.record.verdict} className="text-sm" /> : <NoVerdict />}
-              </Fact>
-              <Fact label={t("execution")} sub={<>{num(s.runtime_seconds)} s · <When iso={s.started_at} /></>}>
-                {s.status ? <Status word={s.status} /> : "—"}{s.exit_code !== undefined ? <span className="text-muted-foreground font-mono text-xs">exit {s.exit_code}</span> : null}
-              </Fact>
-              <Fact label={t("source_revision")} sub={s.runtime ? `${t("lifecycle_status")} ${s.runtime.status ?? "unknown"}` : s.source?.kind ?? "—"}><Revision source={s.source} /></Fact>
-              <Fact label={t("data_class")} sub={<span className="inline-flex flex-wrap items-center gap-1">artifact <Sha value={s.artifact_sha256} /></span>}><DataClass value={s.data_class} /></Fact>
-              <TrustFact run={run} outcome={current} onOpen={openTrust} />
-            </div>
-            {failure ? <Notice kind="bad" title={`${t("failure_record")}: ${failure.reason}`}>{failure.stderr_tail ? <Pre className="mt-1 w-full whitespace-pre-wrap">{failure.stderr_tail}</Pre> : null}</Notice> : null}
-            {(s.metrics ?? []).length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {s.metrics.map((m: any) => (
-                  <div key={m.name} className="rounded-lg border px-4 py-3">
-                    <div className="text-lg font-semibold tabular-nums">{num(m.value)}</div>
-                    <div className="text-muted-foreground truncate font-mono text-xs" title={m.name}>{m.name}</div>
+            <Card className="gap-0 overflow-hidden py-0">
+              <div className={cn("grid", figure && "lg:grid-cols-[minmax(0,1fr)_17rem]")}>
+                <div className="flex min-w-0 flex-col gap-4 p-5">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {current.issued ? <Status word={current.record.verdict} className="h-7 px-2.5 text-sm [&>svg]:size-4" /> : <NoVerdict />}
+                    {current.issued ? (
+                      <span className="text-muted-foreground text-[13px]">
+                        <span className="figure-num text-foreground text-2xl">{current.record.summary.passed}</span>
+                        <span className="figure-num text-lg"> / {current.record.summary.mandatory}</span> {t("mandatory_passed_l")} · <span className="font-mono text-xs">{current.record.contract.id} {current.record.contract.version}</span>
+                      </span>
+                    ) : null}
                   </div>
-                ))}
+                  {current.issued ? (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="eyebrow" title={t("requirements_strip_hint")}>{t("requirements_strip")}</div>
+                      <Fingerprint key={current.record.issued_at ?? ""} cells={cellsOfRecord(current.record)} size="lg" />
+                    </div>
+                  ) : null}
+                  {(s.metrics ?? []).length > 0 ? (
+                    <dl className="stagger flex flex-wrap gap-x-8 gap-y-3 border-t pt-4">
+                      {s.metrics.map((m: any, i: number) => (
+                        <div key={m.name} className="min-w-0" style={{ "--i": i } as React.CSSProperties}>
+                          <dt className="text-muted-foreground max-w-40 truncate font-mono text-[11px]" title={m.name}>{m.name}</dt>
+                          <dd className="figure-num text-[22px] leading-tight">{num(m.value)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
+                </div>
+                {figure ? (
+                  <div className="bg-muted/30 border-t p-4 lg:border-t-0 lg:border-l">
+                    <Figure run={s.id} path={figure} eager className="mx-auto max-w-[15rem]" caption={<span>{t("figure")} 1 / {figures.length}</span>} />
+                    <div className="text-muted-foreground mt-2 truncate text-center font-mono text-[11px]">{figure}</div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+              <div className="grid grid-cols-2 border-t max-lg:[&>*:nth-child(even)]:border-l max-lg:[&>*:nth-child(n+3)]:border-t lg:grid-cols-4 lg:divide-x">
+                <Fact label={t("execution")} sub={<>{num(s.runtime_seconds)} s · <When iso={s.started_at} /></>}>
+                  {s.status ? <Status word={s.status} /> : "—"}{s.exit_code !== undefined ? <span className="text-muted-foreground font-mono text-xs">exit {s.exit_code}</span> : null}
+                </Fact>
+                <Fact label={t("source_revision")} sub={s.runtime ? `${t("lifecycle_status")} ${s.runtime.status ?? "unknown"}` : s.source?.kind ?? "—"}><Revision source={s.source} /></Fact>
+                <Fact label={t("data_class")} sub={<span className="inline-flex flex-wrap items-center gap-1">artifact <Sha value={s.artifact_sha256} /></span>}><DataClass value={s.data_class} /></Fact>
+                <TrustFact run={run} outcome={current} onOpen={openTrust} />
+              </div>
+            </Card>
+            {failure ? <Notice kind="bad" title={`${t("failure_record")}: ${failure.reason}`}>{failure.stderr_tail ? <Pre className="mt-1 w-full whitespace-pre-wrap">{failure.stderr_tail}</Pre> : null}</Notice> : null}
             <Tabs value={tab} onValueChange={changeTab} className="gap-4">
               <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-                <TabsList>
+                <TabsList variant="line" className="w-full justify-start">
                   <TabsTrigger value="verdict">{t("tab_verdict")}</TabsTrigger>
                   <TabsTrigger value="evidence">{t("tab_evidence")}</TabsTrigger>
                   <TabsTrigger value="outputs">{t("tab_outputs")} <span className="text-muted-foreground tabular-nums">{run.files.length}</span></TabsTrigger>

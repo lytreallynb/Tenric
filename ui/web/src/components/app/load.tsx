@@ -13,5 +13,6 @@ export function Loaded<T>({ state, children }: { state: { data?: T; error?: stri
     return <Empty icon={TriangleAlertIcon} title={t("load_failed")} body={state.error} action={<Button variant="outline" onClick={state.reload}><RefreshCwIcon />{t("retry")}</Button>} />;
   }
   if (state.data === undefined) return slow ? <PageSkeleton /> : null;
-  return <>{children(state.data)}</>;
+  // A page arrives with a short rise, once its data is in, so the motion marks real content arriving.
+  return <div className="page-enter flex min-w-0 flex-col gap-6">{children(state.data)}</div>;
 }

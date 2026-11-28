@@ -170,7 +170,13 @@ export interface RunSummary {
   source?: { kind?: string; revision?: string; dirty?: boolean };
   artifact_sha256?: string;
   metrics?: { name: string; value: number }[];
-  verification?: { exit_code: number; contract: string; version: string; verdict: string; passed: number; total: number; blocking: string[] };
+  verification?: {
+    exit_code: number; contract: string; version: string; verdict: string; passed: number; total: number; blocking: string[];
+    /** Every requirement's status as the verifier reported it, in contract order. */
+    requirements: { id: string; title: string; level: string; status: string }[];
+  };
+  /** Figure images the artifact lists that exist in the run directory, as paths relative to it. */
+  figures?: string[];
   no_verdict?: string;
   runtime?: { status?: string; backend?: string; backend_kind?: string; task?: string; recorded_verdict: string | null };
 }
@@ -278,6 +284,10 @@ function summariseRun(run: Located): RunSummary {
       source: artifact.source && { kind: artifact.source.kind, revision: artifact.source.revision, dirty: artifact.source.dirty },
       metrics: Array.isArray(artifact.metrics) ? artifact.metrics.map((m: Json) => ({ name: m.name, value: m.value })) : [],
     });
+    if (run.origin === "run" && Array.isArray(artifact.figures)) {
+      summary.figures = artifact.figures.map((f: Json) => f?.image_output).filter((path: unknown): path is string =>
+        typeof path === "string" && /\.(png|jpe?g)$/i.test(path) && !path.split("/").includes("..") && existsSync(join(run.dir, path)));
+    }
   }
   if (run.origin === "fixture") {
     summary.no_verdict = "fixture: a single hand-written file with no run directory, so it is not verified";
@@ -295,6 +305,7 @@ function summariseRun(run: Located): RunSummary {
       contract: v.contract.id, version: v.contract.version, verdict: v.verdict,
       passed: v.summary.passed, total: v.summary.mandatory,
       blocking: v.results.filter((r) => r.level === "mandatory" && r.status !== "pass").map((r) => r.requirement),
+      requirements: v.results.map((r) => ({ id: r.requirement, title: r.title, level: r.level, status: r.status })),
     };
   } catch (error) {
     if (!(error instanceof PreconditionError)) throw error;

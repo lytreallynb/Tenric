@@ -127,12 +127,13 @@ export function Empty({ title, body, action, icon: Icon = InboxIcon, compact }: 
   );
 }
 
-export function PageHeader({ title, description, actions }: { title: React.ReactNode; description?: React.ReactNode; actions?: React.ReactNode }) {
+export function PageHeader({ title, description, actions, eyebrow }: { title: React.ReactNode; description?: React.ReactNode; actions?: React.ReactNode; eyebrow?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-      <div className="min-w-0 space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight break-words">{title}</h1>
-        {description ? <div className="text-muted-foreground text-sm">{description}</div> : null}
+      <div className="min-w-0 space-y-1.5">
+        {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
+        <h1 className="text-[22px] leading-tight font-semibold break-words">{title}</h1>
+        {description ? <div className="text-muted-foreground max-w-3xl text-[13px] leading-relaxed">{description}</div> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>

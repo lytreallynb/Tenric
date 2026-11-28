@@ -277,21 +277,8 @@ function Issued({ run, outcome, busy, act }: { run: any; outcome: any; busy: str
     <div className="flex flex-col gap-4">
       <Card className={cn("relative gap-0 overflow-hidden py-0")}>
         {busy ? <div className="bg-primary/20 absolute inset-x-0 top-0 h-0.5 overflow-hidden"><div className="bg-primary h-full w-1/3 animate-[indeterminate_1.2s_ease-in-out_infinite]" /></div> : null}
-        <CardHeader className="gap-4 border-b py-6 sm:grid-cols-[auto_1fr_auto]">
-          <div className="flex items-center gap-4 sm:contents">
-            <div className={cn("flex size-14 shrink-0 items-center justify-center rounded-full", style.ring)}><style.Icon className={cn("size-8", style.text)} /></div>
-            <div className="min-w-0 self-center">
-              <div className={cn("text-2xl font-semibold tracking-tight", style.text)}>{record.verdict}</div>
-              <div className="text-muted-foreground text-sm">{t(`verdict_means_${record.verdict}`)}</div>
-            </div>
-          </div>
-          <div className="flex items-baseline gap-1 self-center sm:flex-col sm:items-end sm:gap-0">
-            <div className="text-3xl font-semibold tabular-nums">{record.summary.passed}<span className="text-muted-foreground text-lg font-normal"> / {record.summary.mandatory}</span></div>
-            <div className="text-muted-foreground text-xs">{t("mandatory_passed_l")} · {pct}%</div>
-          </div>
-        </CardHeader>
         <CardContent className="grid gap-4 py-5">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5" title={`${pct}%`}>
             {record.results.map((r: any) => (
               <Tooltip key={r.requirement}>
                 <TooltipTrigger asChild>
@@ -304,7 +291,10 @@ function Issued({ run, outcome, busy, act }: { run: any; outcome: any; busy: str
               </Tooltip>
             ))}
           </div>
-          <p className="text-sm leading-relaxed">{record.statement}</p>
+          <div className="flex gap-3">
+            <style.Icon className={cn("mt-0.5 size-4 shrink-0", style.text)} />
+            <p className="text-[13.5px] leading-relaxed"><span className={cn("font-semibold", style.text)}>{record.verdict}</span> · {t(`verdict_means_${record.verdict}`)} <span className="text-muted-foreground">{record.statement}</span></p>
+          </div>
         </CardContent>
         <CardFooter className="bg-muted/40 flex flex-wrap gap-2 border-t py-3">
           {run.contracts.length > 1 ? (

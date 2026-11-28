@@ -5,9 +5,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* shadcn/ui theme tokens (neutral base colour), unchanged from the library's defaults. */
+/* shadcn/ui theme tokens (neutral base colour). The radius is tighter than the library default:
+   this is an instrument for reading records, so surfaces stay quiet and square-ish. */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -81,7 +82,7 @@
 }
 
 @theme inline {
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -124,7 +125,14 @@
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  body { @apply bg-background text-foreground antialiased; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    /* Geist reads better slightly tightened; numbers line up in columns everywhere. */
+    letter-spacing: -0.006em;
+    font-feature-settings: "cv11", "ss01", "tnum";
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 { letter-spacing: -0.02em; text-wrap: balance; }
   code, pre, kbd { @apply font-mono; }
 }
 
@@ -149,3 +157,26 @@
 .prose-doc hr { @apply my-6; }
 
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+
+/* ------------------------------------------------------------------ type */
+/* A small label above a value or a section: the vocabulary of a lab sheet. */
+.eyebrow { @apply text-muted-foreground text-[11px] font-medium tracking-[0.06em] uppercase; }
+:lang(zh) .eyebrow { letter-spacing: 0.02em; }
+/* A large figure: the number is the content, so it gets the weight. */
+.figure-num { @apply font-semibold tabular-nums tracking-[-0.03em]; font-feature-settings: "tnum", "zero"; }
+
+/* ---------------------------------------------------------------- motion */
+/* Motion only says something: a page arriving, a verdict being read requirement by requirement,
+   a bar growing to its count. Everything is off for people who ask for reduced motion. */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes cell-in { from { opacity: 0; transform: scale(0.4); } to { transform: none; } }
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.page-enter { animation: rise 260ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.stagger > * { animation: rise 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.cell-in { animation: cell-in 260ms cubic-bezier(0.3, 1.4, 0.5, 1) both; animation-delay: calc(var(--i, 0) * 28ms + 80ms); }
+.grow-x { transform-origin: left; animation: grow-x 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 60ms + 120ms); }
+.fade-in { animation: fade 400ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .stagger > *, .cell-in, .grow-x, .fade-in { animation: none !important; }
+}
